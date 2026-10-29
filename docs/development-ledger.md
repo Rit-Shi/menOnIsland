@@ -83,3 +83,10 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - Review boundaries: initial proactive opportunity then wait-for-input is intentional; gateway failures become a pass without spinning; provider quality/latency, multi-process storage and corrupted-save recovery remain outside this local MVP change.
 
 - Final acceptance after review fixes: private messages and quota render correctly, reload keeps the deadline, and the server automatically enters registration with private composition disabled. Main service restarted at http://127.0.0.1:3000; existing human game remains Day 3 NEGOTIATION/version65 with gold [8,5,14,2]. QA server/tab stopped. All 55 tests pass; final review findings fixed with regression coverage.
+
+## Uniform Agent identity perspective
+
+- User requested removing explicit disclosure that P0 is human: all other participants should appear as Agents to each model.
+- Shared model prompt now describes four independent Agents and removes human-specific language. Agent observations omit all `is_human` flags, use neutral P0 display names in player lists/rankings, and neutralize controller labels in SYSTEM-authored history, including existing saved messages.
+- P0's human-facing view, raw saves and server authorization retain the actual controller identity. Role-authored public/private messages remain verbatim; this change removes system disclosure rather than rewriting negotiations or promises.
+- Regression tests RED (3 expected failures) → GREEN. Full offline suite 58/58 passes; actual local gateway request capture checks all five action types for each of P1/P2/P3 (15 requests), plus legacy SYSTEM history, final ranking labels, source immutability and preserved human interface fields. No live provider requests or real-game actions are needed.

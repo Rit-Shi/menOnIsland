@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, applyAction, advanceTime } from '../src/engine.js';
+import { createGame, applyAction, advanceTime, addMessage } from '../src/engine.js';
 import { getObservation, getHumanView } from '../src/observation.js';
 
 const ids = ['P0', 'P1', 'P2', 'P3'];
@@ -58,4 +58,34 @@ test('unrevealed ballots are never included in a different candidate observation
   assert.equal(getObservation(game, 'P0').vote_session.votes, undefined);
   assert.equal(getObservation(game, 'P1').my_vote, 'P3');
   assert.equal(getObservation(game, 'P0').my_vote, null);
+});
+
+test('Agent observations hide controller identities and neutralize P0 in system history and rankings', () => {
+  const game = createGame({ id: 'identities', randomInt: () => 0 });
+  addMessage(game, 'SYSTEM', '玩家邀请三名 Agent 根据最新报名重新评估任务选择。');
+  game.ranking = game.players.map((p, i) => ({ id: p.id, name: p.name, gold: p.gold, rank: i + 1 }));
+  const original = structuredClone(game);
+  for (const id of ['P1', 'P2', 'P3']) {
+    const observation = getObservation(game, id);
+    assert.equal(observation.players[0].name, 'P0');
+    assert.ok(observation.players.every(p => !Object.hasOwn(p, 'is_human') && !Object.hasOwn(p, 'personality')));
+    assert.equal(observation.ranking[0].name, 'P0');
+    assert.ok(observation.messages.some(m => m.text.includes('P0邀请')));
+    assert.doesNotMatch(JSON.stringify(observation), /人类|玩家|is_human|\bHuman\b/i);
+  }
+  assert.deepEqual(game, original);
+  const human = getHumanView(game);
+  assert.equal(human.players[0].name, '玩家');
+  assert.equal(human.players[0].is_human, true);
+  assert.equal(human.ranking[0].name, '玩家');
+  assert.ok(human.messages.some(m => m.text.includes('玩家邀请')));
+});
+
+test('identity-neutral Agent views preserve player-authored negotiation text verbatim', () => {
+  const game = createGame({ id: 'negotiation-text', randomInt: () => 0 });
+  const text = '我猜这个玩家是人类，这只是游戏里的说法。';
+  applyAction(game, 'P0', { type: 'speech', message: text });
+  const observation = getObservation(game, 'P1');
+  assert.equal(observation.messages.find(m => m.from === 'P0').text, text);
+  assert.equal(observation.players[0].name, 'P0');
 });

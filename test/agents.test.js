@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { createGame, applyAction } from '../src/engine.js';
+import { createGame, applyAction, addMessage } from '../src/engine.js';
 import { getObservation } from '../src/observation.js';
 import { requestDecision, parseDecision } from '../src/agents.js';
 import { loadConfig } from '../src/config.js';
@@ -104,4 +104,36 @@ test('loads model mapping and keeps secrets out of public config', () => {
   assert.equal(config.models.P3, 'three');
   assert.ok(!JSON.stringify(config.publicConfig).includes('test-secret'));
   assert.equal(config.publicConfig.configured, true);
+});
+
+test('every Agent action request presents four Agents without human controller metadata', async t => {
+  let output;
+  let received;
+  const gateway = createServer(async (req, res) => {
+    let body = ''; for await (const chunk of req) body += chunk;
+    received = JSON.parse(body);
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }));
+  });
+  await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => gateway.close(resolve)));
+  const game = createGame({ id: 'agent-identities', randomInt: () => 0 });
+  [...game.negotiation_order].forEach(id => applyAction(game, id, { type: 'speech', message: '一起商量任务。' }));
+  addMessage(game, 'SYSTEM', '玩家邀请三名 Agent 重新评估报名。');
+  game.vote_session = { candidate_ids: ['P0', 'P1', 'P2', 'P3'], votes: {} };
+  const config = { baseUrl: `http://127.0.0.1:${gateway.address().port}/v1`, apiKey: 'test-key', models: { P1: 'one', P2: 'two', P3: 'three' }, timeoutMs: 1000 };
+  const actions = { speech: { message: '可以合作。' }, private_chat: { pass: true }, register: { task_id: 'A' }, vote: { target_id: 'P0' }, invest: { amount: 0 } };
+  for (const id of ['P1', 'P2', 'P3']) {
+    for (const [kind, value] of Object.entries(actions)) {
+      output = value;
+      const result = await requestDecision(config, getObservation(game, id), kind);
+      assert.equal(result.fallback, false, `${id}/${kind}`);
+      assert.doesNotMatch(JSON.stringify(received.messages), /人类|玩家|is_human|\bHuman\b/i, `${id}/${kind}`);
+      assert.match(received.messages[0].content, /4名独立Agent/);
+      const context = JSON.parse(received.messages[1].content);
+      assert.equal(context.players.length, 4);
+      assert.equal(context.players[0].name, 'P0');
+      assert.equal(context.viewer_id, id);
+    }
+  }
 });

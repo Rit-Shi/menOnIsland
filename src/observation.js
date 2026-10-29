@@ -2,6 +2,11 @@ import { IDS, TASKS, currentSpeaker, privateMessagesSent, PRIVATE_CHAT_MESSAGE_L
 
 export function getObservation(game, viewerId, now = Date.now) {
   if (!IDS.includes(viewerId)) throw new Error('未知观察者');
+  const agentView = viewerId !== 'P0';
+  const nameFor = p => agentView && p.id === 'P0' ? 'P0' : p.name;
+  const messageFor = message => agentView && message.from === 'SYSTEM'
+    ? { ...message, text: message.text.replaceAll('人类玩家', 'P0').replaceAll('玩家', 'P0').replaceAll('人类', '角色') }
+    : message;
   const roundResults = game.round_results.map(result => ({
     day: result.day,
     public_gold_balances: result.public_gold_balances,
@@ -16,7 +21,7 @@ export function getObservation(game, viewerId, now = Date.now) {
   const view = {
     id: game.id, schema_version: game.schema_version, version: game.version, current_day: game.current_day, max_days: game.max_days, phase: game.phase,
     viewer_id: viewerId,
-    players: game.players.map(p => ({ id: p.id, name: p.name, is_human: p.is_human, gold: p.gold, ...(p.id === viewerId ? { statistics: p.statistics } : {}) })),
+    players: game.players.map(p => ({ id: p.id, name: nameFor(p), ...(!agentView ? { is_human: p.is_human } : {}), gold: p.gold, ...(p.id === viewerId ? { statistics: p.statistics } : {}) })),
     tasks: TASKS, registrations: game.registrations, registration_status: game.registration_status,
     registration_reviews_remaining: 2 - (game.registration_reviews ?? 0),
     registration_review_pending: IDS.slice(1).some(id => !Object.hasOwn(game.registrations, id) || (game.agent_registration_revision?.[id] ?? 0) < (game.registration_revision ?? 0)),
@@ -30,7 +35,7 @@ export function getObservation(game, viewerId, now = Date.now) {
       messages_sent: privateMessagesSent(game, viewerId),
       remaining_messages: Math.max(0, PRIVATE_CHAT_MESSAGE_LIMIT - privateMessagesSent(game, viewerId)),
     } : null,
-    messages: game.messages.filter(m => !m.to || m.from === viewerId || m.to === viewerId),
+    messages: game.messages.filter(m => !m.to || m.from === viewerId || m.to === viewerId).map(messageFor),
     promises: game.promises,
     vote_session: session ? { task_id: session.task_id, candidate_ids: session.candidate_ids, vote_round: session.vote_round, speech_index: session.speech_index } : null,
     vote_results: game.vote_results,
@@ -38,7 +43,7 @@ export function getObservation(game, viewerId, now = Date.now) {
     my_investment: Object.hasOwn(game.investments, viewerId) ? game.investments[viewerId] : null,
     round_results: roundResults,
     memories: { [viewerId]: game.memories[viewerId] },
-    ranking: game.ranking,
+    ranking: game.ranking.map(p => ({ ...p, name: nameFor(p) })),
   };
   return structuredClone(view);
 }
