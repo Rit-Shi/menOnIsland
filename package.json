@@ -1,0 +1,14 @@
+{
+  "name": "island-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "孤岛协议：一名玩家与三名独立模型 Agent 的八日社交博弈",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test",
+    "check:models": "node scripts/check-models.js"
+  }
+}
