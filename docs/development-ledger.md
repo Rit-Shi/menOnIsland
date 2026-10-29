@@ -105,3 +105,9 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 
 - User requested removing payout examples from the model prompt after Agents incorrectly claimed C contributions of 10 each would net 11. Replaced the detailed rounding formula and examples with “所有金币字段直接表示整数金币。金币除不尽时向上取整。”
 - Settlement logic and existing chat history are unchanged. All 63 offline tests pass.
+
+## Clarified team formation and investment failure
+
+- Investigated P1's historical Day 1 private claim that four willing C participants would fail if one withdrew. The observation path includes all four role IDs and C's required_members=3; the short visible history fits within the 60-message limit. The original model request body was not recorded, so the audit does not claim an exact historical request replay or certainty about the model's internal reasoning.
+- Shared rules now distinguish oversubscription voting, underfilled cancellation without investment or deduction, and a formed team's investment failure. Only insufficient total investment after team formation loses submitted contributions. No payout examples were added.
+- All 63 offline tests pass. Additional offline engine checks verify four C applicants enter voting, three can form C and contribute 10 each for net +10, and two C applicants retain their coins. Captured an offline adapter request to verify four IDs, C's three-member requirement, the private phase, no submitted registrations and the clarified rules. No live provider calls or real-game actions were used for these checks.
