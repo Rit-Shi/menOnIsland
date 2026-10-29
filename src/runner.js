@@ -2,6 +2,8 @@ import { applyAction, currentSpeaker } from './engine.js';
 import { getObservation } from './observation.js';
 import { requestDecision, fallbackAction } from './agents.js';
 import { createPrivateChat } from './private-chat.js';
+import { randomUUID } from 'node:crypto';
+import { addDecisionDiagnostic, writeSubmissionLog } from './model-log.js';
 
 function pending(game) {
   if (['NEGOTIATION', 'VOTE_SPEECH'].includes(game.phase)) {
@@ -28,26 +30,35 @@ export function createRunner({ store, config, decision = requestDecision, random
       if (!actions.length) return;
       await store.transact(id, game => { game.thinking = actions.map(a => a.id); game.version++; });
       // Freeze all observations before any result in this secret-decision batch is applied.
-      const requests = actions.map(({ id, kind }) => ({ actor: id, kind, observation: getObservation(snapshot, id, now) }));
+      const requests = actions.map(({ id, kind }) => ({ actor: id, kind, callId: randomUUID(), observation: getObservation(snapshot, id, now) }));
       const decisions = await Promise.all(requests.map(async request => {
-        try { return await decision(config, request.observation, request.kind); }
+        try { return await decision(config, request.observation, request.kind, { callId: request.callId }); }
         catch { return { action: fallbackAction(request.observation, request.kind), privateMessages: [], fallback: true, code: 'gateway_unavailable', model: config.models[request.actor] }; }
       }));
+      const outcomes = [];
       await store.transact(id, game => {
         for (let i = 0; i < requests.length; i++) {
           const { actor, kind } = requests[i];
           const result = decisions[i];
-          if (!pending(game).some(a => a.id === actor && a.kind === kind)) continue;
+          result.model ||= config.models[actor];
+          result.trace ||= { call_id: requests[i].callId, phase: snapshot.phase, kind, attempt_count: 0, error_codes: [] };
+          if (!pending(game).some(a => a.id === actor && a.kind === kind)) {
+            outcomes.push({ request: requests[i], result, outcome: 'discarded', code: 'state_changed' });
+            continue;
+          }
           try { applyAction(game, actor, result.action, randomInt, now); }
           catch {
             result.fallback = true; result.code = 'invalid_action';
-            applyAction(game, actor, fallbackAction(getObservation(game, actor, now), kind), randomInt, now);
+            result.action = fallbackAction(getObservation(game, actor, now), kind);
+            applyAction(game, actor, result.action, randomInt, now);
           }
-          if (result.fallback) game.diagnostics.push({ day: game.current_day, actor_id: actor, model: result.model || config.models[actor], code: result.code });
+          addDecisionDiagnostic(game, requests[i].observation, kind, result);
+          outcomes.push({ request: requests[i], result, outcome: result.fallback ? 'fallback_applied' : 'applied', code: result.code });
         }
         game.thinking = [];
         game.version++;
       });
+      await Promise.all(outcomes.map(({ request, result, outcome, code }) => writeSubmissionLog(config, request.observation, request.kind, result, outcome, result.action, code)));
     }
     throw new Error('automatic_step_limit');
   }

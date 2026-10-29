@@ -57,6 +57,6 @@ export function getHumanView(game, now = Date.now) {
   delete view.memories;
   view.thinking = game.phase === 'PRIVATE_CHAT' ? [] : game.thinking ?? [];
   view.diagnostics = ['ROUND_UPDATE', 'FINISHED'].includes(game.phase)
-    ? game.diagnostics.filter(d => d.day === game.current_day).map(({ actor_id, model, code }) => ({ actor_id, model, code })) : [];
+    ? game.diagnostics.filter(d => d.day === game.current_day).map(({ actor_id, model, code, phase, kind, attempt_count, recovered }) => ({ actor_id, model, code, phase, kind, attempt_count, recovered })) : [];
   return view;
 }

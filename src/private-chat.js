@@ -1,5 +1,7 @@
 import { applyAction, advanceTime, privateMessagesSent, PRIVATE_CHAT_MESSAGE_LIMIT } from './engine.js';
 import { getObservation } from './observation.js';
+import { randomUUID } from 'node:crypto';
+import { addDecisionDiagnostic, writeSubmissionLog } from './model-log.js';
 
 const inboxCount = (game, id) => game.messages.filter(m => m.day === game.current_day && m.to === id).length;
 
@@ -22,6 +24,7 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
   }
   function launch(snapshot, actor, session) {
     const controller = new AbortController();
+    const callId = randomUUID();
     const seen = inboxCount(snapshot, actor);
     const task = (async () => {
       if (controller.signal.aborted || closed) return;
@@ -37,7 +40,7 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
       try {
         const requestConfig = { ...config, timeoutMs: Math.max(1, Math.min(config.timeoutMs || 60000, remaining)) };
         result = await Promise.race([
-          Promise.resolve().then(() => decision(requestConfig, observation, 'private_chat', { signal: controller.signal })),
+          Promise.resolve().then(() => decision(requestConfig, observation, 'private_chat', { signal: controller.signal, callId })),
           aborted,
         ]);
       } catch {
@@ -45,7 +48,14 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
       } finally {
         controller.signal.removeEventListener('abort', abortListener);
       }
-      if (!result || controller.signal.aborted || closed) return;
+      if (!result || controller.signal.aborted || closed) {
+        await writeSubmissionLog(config, observation, 'private_chat', { trace: { call_id: callId } }, 'discarded', null, 'aborted');
+        return;
+      }
+      result.model ||= config.models[actor];
+      result.trace ||= { call_id: callId, phase: snapshot.phase, kind: 'private_chat', attempt_count: 0, error_codes: [] };
+      let outcome = 'discarded';
+      let errorCode = 'state_changed';
       await store.transact(snapshot.id, game => {
         if (game.phase !== 'PRIVATE_CHAT' || game.current_day !== snapshot.current_day || now() >= game.private_chat.ends_at) return;
         // Only acknowledge the inbox captured for this request; newer input needs another turn.
@@ -56,11 +66,15 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
         } catch {
           result.fallback = true;
           result.code = 'invalid_action';
-          applyAction(game, actor, { type: 'private_pass' }, randomInt, now);
+          result.action = { type: 'private_pass' };
+          applyAction(game, actor, result.action, randomInt, now);
         }
-        if (result.fallback) game.diagnostics.push({ day: game.current_day, actor_id: actor, model: result.model || config.models[actor], code: result.code });
+        addDecisionDiagnostic(game, observation, 'private_chat', result);
+        outcome = result.fallback ? 'fallback_applied' : 'applied';
+        errorCode = result.code ?? null;
         game.thinking = game.thinking.filter(id => id !== actor);
       });
+      await writeSubmissionLog(config, observation, 'private_chat', result, outcome, outcome === 'discarded' ? null : result.action, errorCode);
     })().catch(() => {}).finally(() => {
       session.jobs.delete(actor);
       if (!closed) onChange(snapshot.id);
