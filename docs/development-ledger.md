@@ -29,3 +29,5 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - Model mapping supplied by user: P1 deepseek-v4.1-flash; P2 deepseek-v4.0-flash; P3 glm-5.2, via the supplied Chat Completions gateway.
 
 - Task 1: complete. Engine and observation filtering verified with 18 passing node:test cases, including eight-day shared ranking and exact fractional payouts.
+
+- Gateway adapter: complete, 22 tests passing. Live gateway checks succeeded for P1 and P3; gateway models list confirms P2's requested deepseek-v4.0-flash is absent, deepseek-v4-flash is available. Awaiting user choice before changing P2's mapping.
