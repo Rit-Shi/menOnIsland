@@ -1,5 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { writeModelLog } from './model-log.js';
+import { setTimeout as delay } from 'node:timers/promises';
 
 const PERSONALITIES = {
   P1: '你是林舟，温和的合作型。主动组织公平出资，重视公开承诺、长远信誉，但在成功希望很低时会选择 A。',
@@ -61,55 +62,95 @@ function validateDecision(value, observation, kind) {
   if (kind === 'speech' && typeof value.message === 'string' && value.message.trim() && value.message.length <= 1000) {
     action = { type: 'speech', message: value.message.trim() };
     const p = value.promise;
-    if (p && ['B', 'C'].includes(p.task_id) && Number.isSafeInteger(p.amount) && p.amount >= 0 && p.amount <= max) action.promise = { task_id: p.task_id, amount: p.amount };
+    if (p != null) {
+      if (!['B', 'C'].includes(p.task_id) || !Number.isSafeInteger(p.amount) || p.amount < 0 || p.amount > max) throw decisionError('invalid_action', `promise必须指定B或C任务，承诺金额必须是0到${max}之间的整数。`);
+      action.promise = { task_id: p.task_id, amount: p.amount };
+    }
   }
-  if (!action) throw new Error('invalid_action');
+  if (!action) {
+    const reasons = {
+      register: 'task_id只能是A、B或C。',
+      invest: `amount必须是0到${max}之间的整数，不能超过你的金币余额。`,
+      vote: `target_id必须是其他当前候选人的ID，可选：${(observation.vote_session?.candidate_ids ?? []).filter(other => other !== id).join('、')}。`,
+      speech: 'message必须是1到1000字的非空文本。',
+      private_chat: `只能在私聊阶段向其他角色发送1到1000字的非空文本，或输出{"pass":true}。当前剩余额度：${observation.private_chat?.remaining_messages ?? 0}。`,
+    };
+    throw decisionError('invalid_action', reasons[kind] || '输出不符合当前行动要求。');
+  }
   return action;
 }
+function errorCode(error, signal, timeout) {
+  if (signal?.aborted) return 'aborted';
+  if (timeout.aborted || error.name === 'TimeoutError') return 'timeout';
+  const safeCodes = ['missing_credentials', 'invalid_JSON', 'invalid_action', 'invalid_gateway_response'];
+  return safeCodes.includes(error.message) || /^http_\d+$/.test(error.message) ? error.message : 'gateway_unavailable';
+}
+const retryable = code => ['invalid_JSON', 'invalid_action', 'invalid_gateway_response', 'gateway_unavailable', 'http_408', 'http_429'].includes(code) || /^http_5\d\d$/.test(code);
+
 export async function requestDecision(config, observation, kind, { signal, callId = randomUUID() } = {}) {
   const actorId = observation.viewer_id;
   const model = config.models[actorId];
   const started = Date.now();
   const trace = { call_id: callId, phase: observation.phase, kind, attempt_count: 0, error_codes: [] };
-  const responseData = {};
-  let body;
+  const timeout = AbortSignal.timeout(config.timeoutMs || 60000);
+  const abort = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  const context = { ...observation, messages: observation.messages.slice(-60) };
+  const messages = [
+    { role: 'system', content: `${RULES}\n${PERSONALITIES[actorId]}\n${FORMATS[kind]}` },
+    { role: 'user', content: JSON.stringify(context) },
+  ];
+  const body = { model, stream: false, temperature: 0.7, max_tokens: kind === 'private_chat' ? 400 : 1200, messages };
+  if (config.disableThinking) body.thinking = { type: 'disabled' };
   let result;
-  let errorDetail = null;
-  try {
-    if (!config.apiKey || !config.baseUrl) throw new Error('missing_credentials');
-    const context = { ...observation, messages: observation.messages.slice(-60) };
-    body = {
-      model, stream: false, temperature: 0.7, max_tokens: kind === 'private_chat' ? 400 : 1200,
-      messages: [
-        { role: 'system', content: `${RULES}\n${PERSONALITIES[actorId]}\n${FORMATS[kind]}` },
-        { role: 'user', content: JSON.stringify(context) },
-      ],
-    };
-    if (config.disableThinking) body.thinking = { type: 'disabled' };
-    const timeout = AbortSignal.timeout(config.timeoutMs || 60000);
-    trace.attempt_count = 1;
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
-      body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, timeout]) : timeout, redirect: 'error',
-    });
-    responseData.http_status = response.status;
-    responseData.request_id = response.headers.get('x-request-id') || response.headers.get('request-id');
-    const raw = await response.text();
-    if (!response.ok) { responseData.body = raw; throw new Error(`http_${response.status}`); }
-    let payload;
-    try { payload = JSON.parse(raw); } catch { responseData.body = raw; throw decisionError('invalid_gateway_response', '网关返回的响应体不是合法JSON。'); }
-    const message = payload?.choices?.[0]?.message;
-    Object.assign(responseData, { content: message?.content ?? null, finish_reason: payload?.choices?.[0]?.finish_reason ?? null, usage: payload?.usage ?? null, tool_calls: message?.tool_calls ?? null, refusal: message?.refusal ?? null });
-    const decision = parseDecision(payload.choices?.[0]?.message?.content);
-    const action = validateDecision(decision, observation, kind);
-    result = { action, privateMessages: [], fallback: false, model, usage: payload.usage?.total_tokens ?? null, trace };
-  } catch (error) {
-    const safeCodes = ['missing_credentials', 'invalid_JSON', 'invalid_action', 'invalid_gateway_response'];
-    const code = signal?.aborted ? 'aborted' : safeCodes.includes(error.message) || /^http_\d+$/.test(error.message) ? error.message : error.name === 'TimeoutError' ? 'timeout' : 'gateway_unavailable';
-    errorDetail = error.detail || code;
-    trace.error_codes.push(code);
+  let code = null;
+  let usage = 0;
+  if (!config.apiKey || !config.baseUrl) code = 'missing_credentials';
+  else for (let attempt = 1; attempt <= 3; attempt++) {
+    if (abort.aborted) { code = errorCode(abort.reason, signal, timeout); break; }
+    trace.attempt_count = attempt;
+    const attemptStarted = Date.now();
+    const responseData = {};
+    let errorDetail = null;
+    let valid = false;
+    try {
+      const response = await fetch(`${config.baseUrl}/chat/completions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
+        body: JSON.stringify(body), signal: abort, redirect: 'error',
+      });
+      responseData.http_status = response.status;
+      responseData.request_id = response.headers.get('x-request-id') || response.headers.get('request-id');
+      const raw = await response.text();
+      if (!response.ok) { responseData.body = raw; throw new Error(`http_${response.status}`); }
+      let payload;
+      try { payload = JSON.parse(raw); } catch { responseData.body = raw; throw decisionError('invalid_gateway_response', '网关返回的响应体不是合法JSON。'); }
+      const message = payload?.choices?.[0]?.message;
+      Object.assign(responseData, { content: message?.content ?? null, finish_reason: payload?.choices?.[0]?.finish_reason ?? null, usage: payload?.usage ?? null, tool_calls: message?.tool_calls ?? null, refusal: message?.refusal ?? null });
+      usage += Number.isFinite(payload?.usage?.total_tokens) ? payload.usage.total_tokens : 0;
+      const action = validateDecision(parseDecision(responseData.content), observation, kind);
+      abort.throwIfAborted();
+      result = { action, privateMessages: [], fallback: false, model, usage: usage || null, trace };
+      valid = true;
+      code = null;
+    } catch (error) {
+      code = errorCode(error, signal, timeout);
+      errorDetail = error.detail || code;
+      trace.error_codes.push(code);
+    }
+    const willRetry = !valid && attempt < 3 && !abort.aborted && retryable(code);
+    await writeModelLog(config, { event: 'model_attempt', game_id: observation.id, call_id: callId, day: observation.current_day, phase: observation.phase, kind, actor_id: actorId, model, attempt, started_at: new Date(attemptStarted).toISOString(), elapsed_ms: Date.now() - attemptStarted, request: body, response: responseData, outcome: valid ? 'valid' : code, error_detail: errorDetail, will_retry: willRetry });
+    if (valid || !willRetry) break;
+    if (code === 'invalid_JSON' || code === 'invalid_action') {
+      if (typeof responseData.content === 'string' && responseData.content) messages.push({ role: 'assistant', content: responseData.content });
+      messages.push({ role: 'user', content: `上次输出未提交，没有产生任何游戏动作。校验失败（${code}）：${errorDetail}${responseData.finish_reason === 'length' ? '上次输出被截断，请缩短内容并确保JSON完整。' : ''}\n请修正后重新提交。${FORMATS[kind]}\n只输出一个完整JSON对象，不要解释。` });
+    } else {
+      try { await delay(attempt * 100, undefined, { signal: abort }); }
+      catch (error) { code = errorCode(error, signal, timeout); trace.error_codes.push(code); break; }
+    }
+  }
+  if (!result) {
+    if (trace.error_codes.at(-1) !== code) trace.error_codes.push(code);
     result = { action: fallbackAction(observation, kind), privateMessages: [], fallback: true, model, code, trace };
   }
-  await writeModelLog(config, { event: 'model_attempt', game_id: observation.id, call_id: callId, day: observation.current_day, phase: observation.phase, kind, actor_id: actorId, model, attempt: trace.attempt_count, started_at: new Date(started).toISOString(), elapsed_ms: Date.now() - started, request: body ?? null, response: responseData, outcome: result.code || 'valid', error_detail: errorDetail });
+  await writeModelLog(config, { event: 'decision_result', game_id: observation.id, call_id: callId, day: observation.current_day, phase: observation.phase, kind, actor_id: actorId, model, elapsed_ms: Date.now() - started, attempt_count: trace.attempt_count, error_codes: trace.error_codes, code: result.code ?? null, fallback: result.fallback, action: result.action });
   return result;
 }

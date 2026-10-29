@@ -175,7 +175,7 @@ function diagnosticNotice(d) {
   const stage = labels[d.phase] ? `在${labels[d.phase]}阶段` : '';
   const attempts = d.attempt_count ? `共尝试 ${d.attempt_count} 次，` : '';
   return d.recovered
-    ? `${names[d.actor_id]}${stage}的输出曾被拒绝（${esc(d.code)}），${attempts}重试后成功提交。`
+    ? `${names[d.actor_id]}${stage}的模型调用曾异常（${esc(d.code)}），${attempts}重试后成功提交。`
     : `${names[d.actor_id]}${stage}的模型调用异常（${esc(d.code)}），${attempts}该次已使用规则规定的合法兜底。`;
 }
 function results() {
