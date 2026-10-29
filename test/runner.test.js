@@ -132,3 +132,20 @@ test('restart preserves deadline and quota, and resumes expired private saves wi
   assert.equal(game.private_chat.ends_at, 31000);
   async function restartedStore() { return new GameStore(f.store.directory).load('runner'); }
 });
+
+test('server deadline timer advances private chat without browser polling or another kick', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = await fixture(t, async (_config, _observation, kind) => kind === 'register' ? { action: { type: 'register', task_id: 'A' }, fallback: false } : pass);
+  await f.runner.kick('runner');
+  await f.runner.idle();
+  f.setTime(31000);
+  t.mock.timers.tick(30000);
+  let game;
+  const timeout = performance.now() + 3000;
+  do {
+    await new Promise(resolve => setImmediate(resolve));
+    game = await f.store.load('runner');
+  } while (game.phase === 'PRIVATE_CHAT' && performance.now() < timeout);
+  await f.runner.idle();
+  assert.equal(game.phase, 'REGISTRATION');
+});

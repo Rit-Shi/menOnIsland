@@ -8,3 +8,5 @@
 .statistics{display:flex;gap:20px;flex-wrap:wrap;color:var(--muted);font-size:10px;padding:4px 0 18px}.statistics b{color:var(--gold);font-weight:400;margin:0 3px}
 
 .reconsider-button{margin-top:15px;display:flex;gap:12px;align-items:center;border:1px solid #4b5d54;border-radius:4px;color:#c3c8a5;background:#d9bd8608;padding:9px 12px;font-size:10px}.reconsider-button small{font-size:9px;color:var(--muted)}.reconsider-button:disabled{opacity:.4;cursor:default}
+
+.private-chat-status{display:flex;align-items:center;gap:24px;margin:8px 0 18px}.private-chat-status>strong{color:var(--gold,#d9bd86);font-size:36px;font-weight:500;font-variant-numeric:tabular-nums}.private-chat-status small{font-size:14px}.private-chat-status>span{color:#a7babe;font-size:13px}.private-chat-status b{color:#e3c88f}.private-chat-contacts{display:flex;flex-wrap:wrap;gap:10px}.private-chat-contacts button{display:inline-flex;align-items:center;gap:5px}@media(max-width:520px){.private-chat-status{gap:14px}.private-chat-status>span{font-size:11px}.private-chat-contacts{gap:7px}.private-chat-contacts button{font-size:11px;padding:8px}}

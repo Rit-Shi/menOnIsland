@@ -33,11 +33,11 @@
 
 **Interfaces:** `applyAction(game, actorId, action, randomInt, now)` accepts an injectable clock. Export `advanceTime(game, now)` and `privateMessagesSent(game, actorId)`. `createRunner` accepts `now`, provides `kick`, `idle`, `resume`, `close`; model decisions accept optional abort signal. Observation exposes own quota and absolute start/end times.
 
-- [ ] Write tests for the new phase, 30-second boundary, five-message limit and private permissions; run them RED.
-- [ ] Implement engine transitions and filtered quota/deadline observations.
-- [ ] Write scheduler and adapter tests: proactive/reply, no spin, per-Agent concurrency, incoming during request, deadline cancellation and restart; run RED.
-- [ ] Implement independent private scheduling, server timer, bounded requests, lifecycle recovery; remove old side-message channel.
-- [ ] Adapt API/engine/privacy fixtures with injected time, then run `npm test` and commit after all pass.
+- [x] Write tests for the new phase, 30-second boundary, five-message limit and private permissions; run them RED.
+- [x] Implement engine transitions and filtered quota/deadline observations.
+- [x] Write scheduler and adapter tests: proactive/reply, no spin, per-Agent concurrency, incoming during request, deadline cancellation and restart; run RED.
+- [x] Implement independent private scheduling, server timer, bounded requests, lifecycle recovery; remove old side-message channel.
+- [x] Adapt API/engine/privacy fixtures with injected time, then run `npm test` and commit after all pass.
 
 ### Task 2: Interface, rules and live acceptance
 
@@ -45,7 +45,7 @@
 
 **Interfaces:** Consume PRIVATE_CHAT and own quota/deadline, using server clock offset for countdown; preserve private history and disable send outside the window or at zero quota.
 
-- [ ] Display a live countdown and remaining daily messages; clearly separate public/private compose availability.
-- [ ] Update rules, prompt descriptions, workflow and relevant design sections to remove all-stage private chat.
+- [x] Display a live countdown and remaining daily messages; clearly separate public/private compose availability.
+- [x] Update rules, prompt descriptions, workflow and relevant design sections to remove all-stage private chat.
 - [ ] Run all tests and syntax checks, verify real-time countdown, replies, cap and automatic registration in an offline browser game, restart main service and preserve current progress.
 - [ ] Commit the interface/docs and request a fresh independent review; fix material findings with RED→GREEN tests.
