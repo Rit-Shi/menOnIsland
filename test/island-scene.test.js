@@ -150,7 +150,7 @@ test('failed tasks show public losses and new days clear old work and celebratio
   assert.ok(next.tasks.every(task => task.state === 'idle'));
 });
 
-test('settlement deltas use the previous public day and final tied winners gather at camp', () => {
+test('settlement deltas use the previous public day and tied leaders gather without crowns', () => {
   const game = view(createGame({ id: 'final-scene', randomInt: () => 0 }));
   game.phase = 'ROUND_UPDATE';
   game.current_day = 2;
@@ -159,5 +159,8 @@ test('settlement deltas use the previous public day and final tied winners gathe
   game.phase = 'FINISHED';
   game.ranking = ids.map(id => ({ id, rank: 1, gold: 26 }));
   const final = islandModel(game);
-  assert.ok(final.roles.every(role => role.winner && role.location === 'camp'));
+  assert.ok(final.roles.every(role => !role.winner && role.location === 'camp'));
+  assert.match(stageInfo(game).hint, /无人获胜/);
+  game.ranking = [{ id: 'P2', rank: 1, gold: 27 }, ...['P0', 'P1', 'P3'].map(id => ({ id, rank: 2, gold: 26 }))];
+  assert.deepEqual(islandModel(game).roles.filter(role => role.winner).map(role => role.id), ['P2']);
 });

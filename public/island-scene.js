@@ -31,7 +31,7 @@ export function stageInfo(game) {
     case 'ROUND_UPDATE':
       return { ...stage, step: 5, title: '本日结算', mapLabel: '今日收获 · 承诺有了答案', hint: '今天的行动已结束。查看你的队内结算和所有人的公开资产，再开始新的一天。', actionLabel: '查看今日收获', actionKind: 'results', needsAction: true };
     case 'FINISHED':
-      return { ...stage, step: 5, title: '最终排名', mapLabel: '八日之后 · 岛上故事留下', hint: '八天航程结束，最终金币决定名次，同分共享排名。看看谁把握住了合作与信任。', actionLabel: '查看最终排名', actionKind: 'results', needsAction: false };
+      return { ...stage, step: 5, title: '最终排名', mapLabel: '八日之后 · 岛上故事留下', hint: (game.ranking || []).filter(p => p.rank === 1).length === 1 ? '八天航程结束。只有金币严格高于其余三人的角色，才是本局唯一胜利者。' : '八天航程结束。最高金币并列，本局无人获胜；并列第一不算赢。', actionLabel: '查看最终排名', actionKind: 'results', needsAction: false };
     default:
       return { ...stage, title: '正在同步', hint: '正在同步当前进度，请稍候。', actionLabel: '查看进度', actionKind: 'wait' };
   }
@@ -43,7 +43,8 @@ export function islandModel(game) {
   const registrations = published ? game.registrations || {} : {};
   const currentResult = ['ROUND_UPDATE', 'FINISHED'].includes(phase) ? game.round_results?.findLast(result => result.day === game.current_day) : null;
   const previousResult = currentResult ? game.round_results.findLast(result => result.day < currentResult.day) : null;
-  const winners = phase === 'FINISHED' ? (game.ranking || []).filter(player => player.rank === 1).map(player => player.id) : [];
+  const leaders = phase === 'FINISHED' ? (game.ranking || []).filter(player => player.rank === 1) : [];
+  const winners = leaders.length === 1 ? leaders.map(player => player.id) : [];
   const tasks = Object.entries(SITES).map(([id, site]) => {
     const applicants = published ? IDS.filter(role => registrations[role] === id) : [];
     const active = game?.active_teams?.[id];
@@ -73,7 +74,7 @@ export function islandModel(game) {
     else if (phase === 'NEGOTIATION') status = speaking ? '发言中' : '等候';
     else if (phase === 'PRIVATE_CHAT') status = '私聊时间';
     else if (phase === 'REGISTRATION') status = game.registration_submitted?.[id] ? '已提交' : '选择中';
-    else if (phase === 'FINISHED') status = winners.includes(id) ? winners.length > 1 ? '并列第一' : '胜者' : '航程结束';
+    else if (phase === 'FINISHED') status = winners.includes(id) ? '唯一胜者' : leaders.some(p => p.id === id) ? '并列 · 未获胜' : '航程结束';
     else if (excluded) status = registrationStatus === 'eliminated' ? '已淘汰' : '未成队';
     else if (currentResult) status = delta ? signed(delta) : '无收益';
     else if (speaking) status = '发言中';

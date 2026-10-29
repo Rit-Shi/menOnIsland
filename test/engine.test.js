@@ -1,9 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, applyAction, settleRound, advanceTime } from '../src/engine.js';
+import { createGame, applyAction, settleRound, advanceTime, rankPlayers } from '../src/engine.js';
 
 const fixed = () => 0;
 const ids = ['P0', 'P1', 'P2', 'P3'];
+
+test('only a unique highest balance wins, while numerical ties retain shared ranks', () => {
+  const game = createGame({ id: 'strict-winner', randomInt: fixed });
+  [25, 20, 20, 10].forEach((gold, i) => { game.players[i].gold = gold; });
+  let ranking = rankPlayers(game.players);
+  assert.deepEqual(ranking.map(p => p.rank), [1, 2, 2, 4]);
+  assert.deepEqual(ranking.filter(p => p.is_winner).map(p => p.id), ['P0']);
+  game.players[1].gold = 25;
+  ranking = rankPlayers(game.players);
+  assert.deepEqual(ranking.map(p => p.rank), [1, 1, 3, 4]);
+  assert.ok(ranking.every(p => p.is_winner === false));
+});
 function registered(choices) {
   const game = createGame({ id: 'test', randomInt: fixed });
   for (const id of game.negotiation_order) applyAction(game, id, { type: 'speech', message: '一起商量' }, fixed);

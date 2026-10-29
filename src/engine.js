@@ -247,7 +247,9 @@ export function calculateSettlement(taskId, memberIds, investments) {
   };
 }
 export function rankPlayers(players) {
-  return [...players].sort((a, b) => b.gold - a.gold).map((p, i, list) => ({ id: p.id, name: p.name, gold: p.gold, rank: list.findIndex(other => other.gold === p.gold) + 1 }));
+  const sorted = [...players].sort((a, b) => b.gold - a.gold);
+  const unique = sorted.length > 0 && (sorted.length === 1 || sorted[0].gold > sorted[1].gold);
+  return sorted.map((p, i, list) => ({ id: p.id, name: p.name, gold: p.gold, rank: list.findIndex(other => other.gold === p.gold) + 1, is_winner: unique && i === 0 }));
 }
 export function settleRound(game) {
   if (game.round_results.some(result => result.day === game.current_day)) return game;

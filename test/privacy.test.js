@@ -89,3 +89,18 @@ test('identity-neutral Agent views preserve player-authored negotiation text ver
   assert.equal(observation.messages.find(m => m.from === 'P0').text, text);
   assert.equal(observation.players[0].name, 'P0');
 });
+
+test('finished observations derive strict winners for old saves without changing balances or stored ranks', () => {
+  const game = createGame({ id: 'old-finish', randomInt: () => 0 });
+  game.phase = 'FINISHED';
+  game.ranking = game.players.map(p => ({ id: p.id, name: p.name, gold: 10, rank: 1 }));
+  const original = structuredClone(game);
+  assert.ok(getHumanView(game).ranking.every(p => p.is_winner === false));
+  assert.deepEqual(game, original);
+  game.players[2].gold = 11;
+  for (const viewer of ['P0', 'P1', 'P2', 'P3']) {
+    const ranking = getObservation(game, viewer).ranking;
+    assert.deepEqual(ranking.filter(p => p.is_winner).map(p => p.id), ['P2']);
+    assert.equal(ranking[0].gold, 11);
+  }
+});

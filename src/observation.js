@@ -1,4 +1,4 @@
-import { IDS, TASKS, currentSpeaker, privateMessagesSent, PRIVATE_CHAT_MESSAGE_LIMIT } from './engine.js';
+import { IDS, TASKS, currentSpeaker, privateMessagesSent, PRIVATE_CHAT_MESSAGE_LIMIT, rankPlayers } from './engine.js';
 
 export function getObservation(game, viewerId, now = Date.now) {
   if (!IDS.includes(viewerId)) throw new Error('未知观察者');
@@ -47,7 +47,7 @@ export function getObservation(game, viewerId, now = Date.now) {
     my_investment: Object.hasOwn(game.investments, viewerId) ? game.investments[viewerId] : null,
     round_results: roundResults,
     memories: { [viewerId]: game.memories[viewerId] },
-    ranking: game.ranking.map(p => ({ ...p, name: nameFor(p) })),
+    ranking: (game.phase === 'FINISHED' ? rankPlayers(game.players) : game.ranking).map(p => ({ ...p, name: nameFor(p) })),
   };
   return structuredClone(view);
 }
