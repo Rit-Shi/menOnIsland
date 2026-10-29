@@ -7,9 +7,9 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - Ruling: work in the named project directory on a new implementation branch rather than create a worktree without a source repository. This keeps the delivered files where the user expects them.
 - Ruling: use integer twelfths of a coin, which exactly represent every possible B/C reward for integer contributions.
 - Ruling: local browser application with loopback server; no external deployment or source upload is part of this development request.
-- Task 1: pending.
-- Task 2: pending.
-- Task 3: pending.
+- Task 1: complete — authoritative rules and private observations.
+- Task 2: complete — gateway adapter, persistence and human API; external P2 model ID confirmation pending.
+- Task 3: complete — playable interface, browser acceptance and final review fixes.
 
 ## Remote repository setup
 
@@ -37,3 +37,14 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - Task 3 interface: implemented and browser-verified at desktop and 390px viewport widths; no horizontal overflow. Live B cooperation produced 12.50 balances from 5+5 investment. Public promise badges and private channels verified. All 28 tests pass, including end-to-end double B elimination and request deduplication. Integration polling now waits for the actual asynchronous settlement rather than a transient no-thinking snapshot. Final review pending.
 
 - Final independent review identified two Important issues: segmented UTF-8 request decoding and missing Agent registration revision. Both reproduced RED in regression tests, then fixed GREEN; full suite 31/31. Added two bounded optional registration reassessments per day and a waiting guard before lock. No minor findings. External model availability/strategic quality remain outside the offline review; live P1/P3 checks stand, P2 choice pending.
+
+## Final verification
+
+- 31 offline tests pass after the review fixes.
+- Browser-driven offline eight-day game completed: every role selecting A finishes at 26.00, four shared first places; final statistics show 8 successes, 0 failures and 0 eliminations.
+- Optional Agent registration reassessment was exercised through the browser.
+- Real gateway game verified a successful B task with P0/P1 contributing 5 each and both reaching 12.50. Private messages and promise badges were checked.
+- Mobile 390px viewport check: document content width equals viewport content width, no horizontal overflow.
+- User preview remains at http://127.0.0.1:3000; temporary offline QA server is stopped.
+- P2 model choice remains pending; no silent substitution was made.
+- GitHub HTTPS authentication was unavailable during push preflight; changes remain local on codex/island-mvp.

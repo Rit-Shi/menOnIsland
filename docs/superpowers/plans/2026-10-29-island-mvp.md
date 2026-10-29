@@ -36,10 +36,10 @@
 
 **Interfaces:** `createGame({id, randomInt})`, `applyAction(game, actorId, action, randomInt)`, `settleRound(game)`, `getObservation(game, viewerId)`, `getHumanView(game)`.
 
-- [ ] Write and run failing tests for A/B/C arithmetic, failed and zero contributions, repeat voting, random turn order, invalid actions, eight days and ties.
-- [ ] Implement the state transitions and money operations using integer twelfths.
-- [ ] Write and run privacy tests covering all phases, chat, settlements, memory and final history; implement filtered observations.
-- [ ] Run `node --test test/engine.test.js test/privacy.test.js` and commit the independently testable engine.
+- [x] Write and run failing tests for A/B/C arithmetic, failed and zero contributions, repeat voting, random turn order, invalid actions, eight days and ties.
+- [x] Implement the state transitions and money operations using integer twelfths.
+- [x] Write and run privacy tests covering all phases, chat, settlements, memory and final history; implement filtered observations.
+- [x] Run `node --test test/engine.test.js test/privacy.test.js` and commit the independently testable engine.
 
 ## Task 2: Gateway, persistence and human API
 
@@ -47,12 +47,12 @@
 
 **Interfaces:** `requestDecision(config, observation, actionKind)`, `GameStore.load/save`, `advanceAgents(gameId)`, same-origin `/api/*` JSON endpoints; session always resolves to P0.
 
-- [ ] Write failing tests for response parsing, validated fallbacks, per-agent model selection and absent credentials.
-- [ ] Implement environment loading and Chat Completions requests with bounded output, timeout and safe error reporting.
-- [ ] Write failing integration tests for session authorization, path traversal, duplicate actions, restart and persisted settlement.
-- [ ] Implement atomic storage, serialized commands and asynchronous model turns; simultaneous secret decisions use one filtered snapshot per batch.
-- [ ] Run the tests and small live checks against the three specified models; record availability without exposing credentials.
-- [ ] Commit the API and runner.
+- [x] Write failing tests for response parsing, validated fallbacks, per-agent model selection and absent credentials.
+- [x] Implement environment loading and Chat Completions requests with bounded output, timeout and safe error reporting.
+- [x] Write failing integration tests for session authorization, path traversal, duplicate actions, restart and persisted settlement.
+- [x] Implement atomic storage, serialized commands and asynchronous model turns; simultaneous secret decisions use one filtered snapshot per batch.
+- [x] Run the tests and small live checks against the three specified models; record availability without exposing credentials.
+- [x] Commit the API and runner.
 
 ## Task 3: Playable interface and handoff
 
@@ -60,10 +60,10 @@
 
 **Interfaces:** Browser uses only the human API; supports negotiation, private chat, registration, speeches, ballots, investment, settlement, next day and final ranking.
 
-- [ ] Build a responsive Chinese island dashboard with role cards, task cards, chronological chat, private channels and explicit phase actions.
-- [ ] Display exact-derived two-decimal money, private settlement records, eight-day trends, loading and recoverable errors.
-- [ ] Verify with `node --check`, the full test suite, an eight-day automated API playthrough and browser inspection of key stages and narrow layouts.
-- [ ] Run a fresh whole-project review, fix material findings with regression tests, document startup and the verified limitations, then commit.
+- [x] Build a responsive Chinese island dashboard with role cards, task cards, chronological chat, private channels and explicit phase actions.
+- [x] Display exact-derived two-decimal money, private settlement records, eight-day trends, loading and recoverable errors.
+- [x] Verify with `node --check`, the full test suite, an eight-day automated API playthrough and browser inspection of key stages and narrow layouts.
+- [x] Run a fresh whole-project review, fix material findings with regression tests, document startup and the verified limitations, then commit.
 
 ## Implementation defaults
 
