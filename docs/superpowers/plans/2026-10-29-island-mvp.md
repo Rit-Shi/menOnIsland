@@ -18,7 +18,7 @@
 - Unfilled and eliminated registrations earn zero and never move automatically to A.
 - Daily public negotiation defaults to one speech per role, cyclic order from a persisted uniformly random starting role.
 - Repeated elimination uses fresh speeches and fresh ballots; tie elimination is random among that round's highest-vote candidates.
-- Use integer twelfths of a coin: B rewards 9 units per total invested coin, C rewards 8 units. Comparisons and ranking remain exact.
+- Money representation superseded by the user's integer-gold correction: direct integer coins, with each successful member reward rounded upward. See `2026-10-29-integer-gold.md`.
 - Private conversations and settlements are filtered on the server, including agent context, memory and final history.
 - Secrets stay in ignored `.env.local`; the application stays local and binds to loopback by default.
 
@@ -37,7 +37,7 @@
 **Interfaces:** `createGame({id, randomInt})`, `applyAction(game, actorId, action, randomInt)`, `settleRound(game)`, `getObservation(game, viewerId)`, `getHumanView(game)`.
 
 - [x] Write and run failing tests for A/B/C arithmetic, failed and zero contributions, repeat voting, random turn order, invalid actions, eight days and ties.
-- [x] Implement the state transitions and money operations using integer twelfths.
+- [x] Implement state transitions and money operations (subsequently converted to direct integer coins under `2026-10-29-integer-gold.md`).
 - [x] Write and run privacy tests covering all phases, chat, settlements, memory and final history; implement filtered observations.
 - [x] Run `node --test test/engine.test.js test/privacy.test.js` and commit the independently testable engine.
 
@@ -61,7 +61,7 @@
 **Interfaces:** Browser uses only the human API; supports negotiation, private chat, registration, speeches, ballots, investment, settlement, next day and final ranking.
 
 - [x] Build a responsive Chinese island dashboard with role cards, task cards, chronological chat, private channels and explicit phase actions.
-- [x] Display exact-derived two-decimal money, private settlement records, eight-day trends, loading and recoverable errors.
+- [x] Display money (subsequently converted to direct integers), private settlement records, eight-day trends, loading and recoverable errors.
 - [x] Verify with `node --check`, the full test suite, an eight-day automated API playthrough and browser inspection of key stages and narrow layouts.
 - [x] Run a fresh whole-project review, fix material findings with regression tests, document startup and the verified limitations, then commit.
 

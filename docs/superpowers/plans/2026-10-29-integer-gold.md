@@ -31,9 +31,9 @@
 
 **Interfaces:** Produce schema-2 games and filtered observations with direct coin values; export `calculateSettlement(taskId, memberIds, investments)` and `rankPlayers(players)` for migration.
 
-- [ ] Write and run failing assertions: B 5+5 → balances 13/13, B 6+5 →13/14, C 20+11+0 from 30 →31/40/51; A eight days →26.
-- [ ] Implement integer balances, ceil per-member payouts, integer UI and Agent context/limits; actual pool equals the sum paid.
-- [ ] Run `npm test` (all green), then commit the coherent economy module.
+- [x] Write and run failing assertions: B 5+5 → balances 13/13, B 6+5 →13/14, C 20+11+0 from 30 →31/40/51; A eight days →26.
+- [x] Implement integer balances, ceil per-member payouts, integer UI and Agent context/limits; actual pool equals the sum paid.
+- [x] Run `npm test` (all green), then commit the coherent economy module.
 
 ### Task 2: Existing saves and documentation
 
@@ -41,8 +41,8 @@
 
 **Interfaces:** Consume Task 1 settlement/ranking functions; `migrateGame(game)` returns whether migration occurred. Store load backs up raw legacy data, migrates once, then atomically saves schema 2.
 
-- [ ] Write migration fixtures for two B days, C rounding, failed/underfilled roles, pending investments and finished ranking; exercise backup and repeated/concurrent load against real temporary files.
-- [ ] Run `node --test test/store.test.js` and confirm the new expectations fail before implementing migration.
-- [ ] Implement migration, update rules/formulas/examples, and run `npm test` (all green).
+- [x] Write migration fixtures for two B days, C rounding, failed/underfilled roles, pending investments and finished ranking; exercise backup and repeated/concurrent load against real temporary files.
+- [x] Run `node --test test/store.test.js` and confirm the new expectations fail before implementing migration.
+- [x] Implement migration, update rules/formulas/examples, and run `npm test` (all green).
 - [ ] Migrate local saves with the server stopped, verify unchanged phase/actions and integer history, restart the local server and inspect the UI.
 - [ ] Commit migration and documentation; perform final independent review and fix any material findings with regression tests.

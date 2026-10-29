@@ -1,5 +1,7 @@
 # Island MVP implementation ledger
 
+Current money rule: direct integer gold; each member's successful reward is rounded upward. The integer-gold change below supersedes the historical fractional-money notes.
+
 Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 
 - Design confirmed by user; gateway and three model identifiers supplied by user.
@@ -54,3 +56,13 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - User confirmed the intended model ID is deepseek-v4-flash, replacing the previously supplied deepseek-v4.0-flash.
 - Updated the source default, example configuration, README and ignored local configuration. Historical pending-choice notes above are superseded.
 - A real P2 speech request returned a valid action with no fallback in 3102 ms; all 31 offline tests pass.
+
+## Integer gold correction
+
+- Plan: `docs/superpowers/plans/2026-10-29-integer-gold.md`; user requested direct integer coins and upward rounding wherever rewards would be fractional.
+- Economy module committed as `0dec465`: direct `gold`, `reward_pool`, `reward_per_player`, `net_changes` in saves, API, UI and Agent inputs; each successful member receives ceil(total × multiplier / members), with the pool showing the actual sum paid.
+- Updated B examples: 5+5 pays 8 each (net +3 each), 6+5 pays 9 each; C total 31 pays 21 each. A remains +2.
+- Economy tests RED (17 expected failures) → GREEN (35/35). Added real-file migration tests RED (4 expected failures) → GREEN; full suite 40/40.
+- Legacy saves replay every recorded settlement from the initial 10 coins; preserve sessions, messages, votes, memories and locked investments. Original bytes are backed up once under `.data/backups/integer-gold/` before atomic replacement. Repeated/concurrent loads do not reapply the migration.
+- Both local saves migrated successfully with verified unchanged progress. Current game remains Day 3 NEGOTIATION, version 65; gold P0=8, P1=5, P2=14, P3=2. Public rule-update notice explains that historical chat amounts remain as originally written.
+- Design formulas, examples, marginal-return analysis, README and in-app rules now use integer rewards. Final browser verification and independent review pending.
