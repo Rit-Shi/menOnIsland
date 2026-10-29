@@ -141,9 +141,18 @@ function taskCards() {
     return `<div class="task-wrap" id="task-card-${id}" tabindex="-1" aria-label="任务 ${id}：${taskNames[id]}"><button class="task-card task-${id} ${selected ? 'selected' : ''}" data-action="register" data-task="${id}" ${!selectable || busy ? 'disabled' : ''} aria-pressed="${selected}"><div class="task-card-top"><span class="task-symbol">${icon(['water','shelter','radio'][i], 26)}</span><span class="task-kind">${['独立行动','双人合作','三人合作'][i]}</span><span class="task-letter">${id}</span></div><h3>${taskNames[id]}</h3><p class="task-desc">${['沿溪寻找淡水，稳妥地度过一天。','合力搭起屋檐，分担风雨与成本。','重启岛上信号，让合作创造更多。'][i]}</p><div class="task-metrics"><div><small>${id === 'A' ? '固定净收益' : '奖池倍率'}</small><strong>${['+2','×1.5','×2'][i]}<span>${id === 'A' ? '金币' : ''}</span></strong></div><div><small>${id === 'A' ? '投入要求' : '全队投入门槛'}</small><strong>${['0','10','30'][i]}<span>金币</span></strong></div></div><div class="task-footer"><span>${id === 'A' ? '不限人数' : `需要 ${i + 1} 人 · 平分后向上取整`}</span><span>${roster}</span></div>${selectable ? `<span class="select-task">${selected ? '✓ 已选择此任务' : '选择任务 ' + id}</span>` : ''}</button></div>`;
   }).join('');
 }
+function reflectionProgress() {
+  const status = game?.reflection_status;
+  if (!status) return '';
+  const completed = Object.values(status.agents).filter(value => value !== 'pending').length;
+  const fallback = Object.values(status.agents).filter(value => value === 'fallback').length;
+  const caption = !status.complete ? '各Agent正在根据自己可见的结果复盘。你可以先查看下方结算。' : fallback ? '模型未生成的反思已明确标记为兜底记录，可以继续。' : '三名Agent已保存今天的反思，可以继续。';
+  return `<section class="reflection-progress" aria-label="Agent日终反思进度"><div class="reflection-heading"><h3>${icon('compass',16)}${status.complete ? '日终反思已处理完成' : 'Agent日终反思'}</h3><span>${completed} / 3</span></div><div class="reflection-rows">${['P1','P2','P3'].map(id => `<div class="reflection-row ${status.agents[id]}">${avatar(id,true)}<b>${names[id]}</b><span>${status.agents[id] === 'pending' ? '<i class="pulse-ring"></i>反思中' : status.agents[id] === 'fallback' ? '未生成 · 已记录兜底' : '✓ 已保存反思'}</span></div>`).join('')}</div><p>${caption}<small>${icon('lock',11)}反思内容仅进入各Agent自己的记忆，用于后续决策。</small></p></section>`;
+}
 function phaseAction() {
   if (!game) return `<section class="action-panel welcome"><div><span class="eyebrow">YOUR STORY STARTS HERE</span><h2>八日之间，信任有价。</h2><p>与三位独立思考的 AI 幸存者谈判、组队，争夺最后的财富。</p></div><button class="primary" data-action="new" ${busy ? 'disabled' : ''}>${busy ? '正在抵达…' : '开始一场博弈'} ${icon('arrow', 18)}</button></section>`;
   const phase = game.phase;
+  const reflecting = game.reflection_status && !game.reflection_status.complete;
   const me = game.players[0];
   const thinking = game.thinking.map(id => names[id]).join('、');
   const waiting = `<div class="waiting"><span class="pulse-ring"></span><span>${thinking ? `${esc(thinking)}正在思考…` : '等待其他角色完成行动…'}</span></div>`;
@@ -175,8 +184,8 @@ function phaseAction() {
       const value = drafts[`investment-${game.current_day}`] ?? defaultAmount;
       content = `<form data-form="invest"><p>你已加入${taskNames[task]}。全队至少投入 ${task === 'B' ? 10 : 30} 金币才成功；门槛不是上限，你可投入0至${max}金币，不必平均出资。成功奖金按实际总投入计算，平分后向上取整；失败不退还投入。</p><div class="investment-input"><label for="investment">你的秘密投入</label><div><input id="investment" data-draft="investment-${game.current_day}" type="number" name="amount" min="0" max="${max}" step="1" value="${esc(value)}" required><span>/ ${max} 可用</span></div></div><div class="action-row"><small>${icon('lock', 13)}提交后不可修改，队友无法提前查看</small><button class="primary" ${busy ? 'disabled' : ''}>锁定投入 ${icon('arrow', 16)}</button></div></form>`;
     }
-  } else if (phase === 'ROUND_UPDATE') content = `<p>今日所有任务已完成。下方可查看你的详细结算与公开金币走势。</p><button class="primary" data-action="next">进入第 ${game.current_day + 1} 天 ${icon('arrow', 17)}</button>`;
-  else content = `<p>${game.ranking.some(p => p.is_winner) ? '八天结束，' + game.ranking.filter(p => p.is_winner).map(p => p.id === 'P0' ? '你' : esc(p.name)).join('') + '成为唯一胜利者。' : '八天结束，最高金币并列，本局无人获胜。并列第一不算赢。'}每一次承诺与选择，都留在了这座岛上。</p><button class="primary" data-action="new">再赴孤岛 ${icon('arrow', 17)}</button>`;
+  } else if (phase === 'ROUND_UPDATE') content = `<p>今日所有任务已完成。下方可查看你的详细结算与公开金币走势。</p>${reflectionProgress()}<button class="primary" data-action="next" ${busy || !game.reflection_status?.complete ? 'disabled' : ''}>${reflecting ? '等待Agent完成反思' : '进入第 ' + (game.current_day + 1) + ' 天'} ${icon('arrow', 17)}</button>`;
+  else content = `<p>${game.ranking.some(p => p.is_winner) ? '八天结束，' + game.ranking.filter(p => p.is_winner).map(p => p.id === 'P0' ? '你' : esc(p.name)).join('') + '成为唯一胜利者。' : '八天结束，最高金币并列，本局无人获胜。并列第一不算赢。'}每一次承诺与选择，都留在了这座岛上。</p>${reflectionProgress()}<button class="primary" data-action="new" ${busy || reflecting ? 'disabled' : ''}>再赴孤岛 ${icon('arrow', 17)}</button>`;
   const order = phase === 'NEGOTIATION' ? game.negotiation_order : phase === 'VOTE_SPEECH' ? game.vote_session.candidate_ids : [];
   const turnOrder = order.length ? `<div class="turn-order"><span>发言顺序</span>${order.map(id => `<b class="${id === game.current_speaker ? 'current' : ''}">${id === 'P0' ? '你' : names[id]}</b>`).join('<i>→</i>')}</div>` : '';
   return `<section class="action-panel"><div class="section-heading"><h2>${icon(phase === 'FINISHED' ? 'flag' : 'compass', 20)}${labels[phase]}</h2><span class="subtle">${phase === 'VOTE_SPEECH' || phase === 'VOTE_SUBMISSION' ? `第 ${game.vote_session.vote_round} 轮淘汰` : 'DAY ' + String(game.current_day).padStart(2, '0')}</span></div>${turnOrder}${content}</section>`;
@@ -207,11 +216,11 @@ function settlement(result) {
   return `<div class="settlement-summary"><span class="result-badge ${s && !s.success ? 'failed' : ''}">${s ? s.success ? '任务成功' : '任务失败' : result.registrations.P0 === 'A' ? '淡水收集完成' : statusNames[result.registration_status.P0] || '本日无任务'}</span><strong class="${result.my_net_change >= 0 ? 'positive' : 'negative'}">${signed(result.my_net_change)}<small>金币</small></strong></div>${s ? `<div class="settlement-meta"><span>全队投入 <b>${s.total_investment}</b></span><span>实际发放总奖金 <b>${money(s.reward_pool)}</b></span><span>每人分得 <b>${money(s.reward_per_player)}</b></span></div><table class="settlement-table"><thead><tr><th>队员</th><th>实际投入</th><th>净收益</th></tr></thead><tbody>${s.member_ids.map(id => `<tr><td>${id === 'P0' ? '你' : names[id]}</td><td>${s.investments[id]}</td><td class="${s.net_changes[id] >= 0 ? 'positive' : 'negative'}">${signed(s.net_changes[id])}</td></tr>`).join('')}</tbody></table>` : `<p class="subtle">${result.registrations.P0 === 'A' ? '任务 A 无需投入，每名执行者独立获得 2 金币。' : '报名不足或被淘汰者当日收益为 0，不自动转入任务 A。'}</p>`}`;
 }
 function diagnosticNotice(d) {
-  const stage = labels[d.phase] ? `在${labels[d.phase]}阶段` : '';
+  const stage = d.kind === 'reflect' ? '在日终反思阶段' : labels[d.phase] ? `在${labels[d.phase]}阶段` : '';
   const attempts = d.attempt_count ? `共尝试 ${d.attempt_count} 次，` : '';
   return d.recovered
     ? `${names[d.actor_id]}${stage}的模型调用曾异常（${esc(d.code)}），${attempts}重试后成功提交。`
-    : `${names[d.actor_id]}${stage}的模型调用异常（${esc(d.code)}），${attempts}该次已使用规则规定的合法兜底。`;
+    : `${names[d.actor_id]}${stage}的模型调用异常（${esc(d.code)}），${attempts}${d.kind === 'reflect' ? '未生成反思，已保存明确标记的兜底记录。' : '该次已使用规则规定的合法兜底。'}`;
 }
 function results() {
   if (!game?.round_results.length) return '';

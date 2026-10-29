@@ -53,6 +53,6 @@
 
 **Interfaces:** stageInfo and action panel consume only reflection_status; next-day remains disabled until complete. No private text in DOM or human API. Existing phase/scene contracts remain.
 
-- [ ] RED progress/guidance tests, implement clear pending/completed/fallback rows and next-day gating; preserve settlement access and final ranking.
-- [ ] Full tests/syntax checks, offline desktop browser acceptance, independent read-only feature review; fix material findings.
-- [ ] Update docs, commit, restart main service and verify HTTP availability.
+- [x] RED progress/guidance tests, implement clear pending/completed/fallback rows and next-day gating; preserve settlement access and final ranking.
+- [x] Full tests/syntax checks, offline desktop browser acceptance, independent read-only feature review; fix material findings.
+- [x] Update docs, commit, restart main service and verify HTTP availability.

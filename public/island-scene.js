@@ -12,6 +12,7 @@ export function stageInfo(game) {
   if (!game) return stage;
   const ownTeam = Object.keys(game.active_teams || {}).find(task => game.active_teams[task].includes('P0'));
   const candidate = game.vote_session?.candidate_ids?.includes('P0');
+  const reflecting = game.reflection_status && !game.reflection_status.complete;
   switch (phase) {
     case 'NEGOTIATION':
       return { ...stage, step: 0, title: '公共协商', mapLabel: '营地议事 · 轮流发言', hint: game.current_speaker === 'P0' ? '轮到你了，说出今天的计划，回应伙伴或提出合作。' : `正在听${nameFor(game, game.current_speaker)}发言。本轮结束后，由你手动开启私聊。`, actionLabel: game.current_speaker === 'P0' ? '去公开发言' : '查看发言顺序', actionKind: game.current_speaker === 'P0' ? 'public' : 'wait', needsAction: game.current_speaker === 'P0' };
@@ -31,8 +32,10 @@ export function stageInfo(game) {
     case 'INVESTMENT_SUBMISSION':
       return { ...stage, step: 4, title: '秘密投入', mapLabel: '队伍出发 · 各自决定投入', hint: ownTeam ? game.my_investment == null ? '你已经成为正式队员。现在决定实际投入，承诺不会自动代替出资。' : '你的投入已锁定。其他人的金额保密，待全队完成后统一结算。' : game.registration_status?.P0 === 'eliminated' ? '你今天已被淘汰，无需投入，不扣金币。其他队伍正在行动。' : game.registration_status?.P0 === 'insufficient_members' ? '你的任务没有凑齐人数，无需投入，不扣金币。其他队伍正在行动。' : '收集淡水无需投入，结算时固定获得 2 金币。其他队伍正在行动。', actionLabel: ownTeam && game.my_investment == null ? '决定我的投入' : '查看行动进度', actionKind: 'invest', needsAction: Boolean(ownTeam && game.my_investment == null) };
     case 'ROUND_UPDATE':
+      if (reflecting) return { ...stage, step: 5, title: '日终反思中', mapLabel: '今日收获 · 各自复盘', hint: '三名Agent正在回顾今天的决策。你可以先查看结算，全部处理完成后再进入下一天。', actionLabel: '查看反思进度', actionKind: 'reflection', needsAction: false };
       return { ...stage, step: 5, title: '本日结算', mapLabel: '今日收获 · 承诺有了答案', hint: '今天的行动已结束。查看你的队内结算和所有人的公开资产，再开始新的一天。', actionLabel: '查看今日收获', actionKind: 'results', needsAction: true };
     case 'FINISHED':
+      if (reflecting) return { ...stage, step: 5, title: '终局复盘中', mapLabel: '八日结束 · 回望每次选择', hint: '最终排名已揭晓，三名Agent正在完成第8天的私人复盘。下方可查看最终胜负。', actionLabel: '查看复盘进度', actionKind: 'reflection', needsAction: false };
       return { ...stage, step: 5, title: '最终排名', mapLabel: '八日之后 · 岛上故事留下', hint: (game.ranking || []).filter(p => p.rank === 1).length === 1 ? '八天航程结束。只有金币严格高于其余三人的角色，才是本局唯一胜利者。' : '八天航程结束。最高金币并列，本局无人获胜；并列第一不算赢。', actionLabel: '查看最终排名', actionKind: 'results', needsAction: false };
     default:
       return { ...stage, title: '正在同步', hint: '正在同步当前进度，请稍候。', actionLabel: '查看进度', actionKind: 'wait' };

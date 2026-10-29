@@ -55,6 +55,17 @@ test('guidance distinguishes the players own turn and private voting/investment 
   assert.equal(stageInfo(investing).needsAction, false);
 });
 
+test('settlement guidance waits for reflection completion while keeping final rankings available',()=>{
+  const game=view(createGame({id:'reflection-guidance',randomInt:()=>0}));
+  game.phase='ROUND_UPDATE';game.reflection_status={complete:false,agents:{P1:'completed',P2:'pending',P3:'pending'}};
+  assert.equal(stageInfo(game).needsAction,false);assert.match(stageInfo(game).title,/反思/);
+  assert.equal(stageInfo(game).actionKind,'reflection');
+  game.reflection_status.complete=true;assert.equal(stageInfo(game).needsAction,true);
+  game.phase='FINISHED';game.reflection_status.complete=false;
+  assert.match(stageInfo(game).title,/复盘/);assert.equal(stageInfo(game).needsAction,false);
+  game.reflection_status.complete=true;assert.equal(stageInfo(game).actionLabel,'查看最终排名');
+});
+
 test('secret registration hides all other destinations and counts even after everyone submits', () => {
   const game = view(registration(['B', 'A', 'B', 'C']));
   const alternate = structuredClone(game);
