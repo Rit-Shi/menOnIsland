@@ -80,7 +80,7 @@ export function createApp({ config = loadConfig(), decision, randomInt, now = Da
         runner.kick(game.id);
         return;
       }
-      const staticFiles = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/island-scene.js': ['island-scene.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
+      const staticFiles = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/island-scene.js': ['island-scene.js', 'text/javascript'], '/phase-notice.js': ['phase-notice.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
       if (request.method === 'GET' && staticFiles[url.pathname]) {
         const [file, type] = staticFiles[url.pathname];
         const content = await readFile(join(root, 'public', file));

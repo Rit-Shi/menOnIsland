@@ -14,7 +14,9 @@ export function stageInfo(game) {
   const candidate = game.vote_session?.candidate_ids?.includes('P0');
   switch (phase) {
     case 'NEGOTIATION':
-      return { ...stage, step: 0, title: '公共协商', mapLabel: '营地议事 · 轮流发言', hint: game.current_speaker === 'P0' ? '轮到你了，说出今天的计划，回应伙伴或提出合作。' : `正在听${nameFor(game, game.current_speaker)}发言。每人发言一次后，进入私聊。`, actionLabel: game.current_speaker === 'P0' ? '去公开发言' : '查看发言顺序', actionKind: game.current_speaker === 'P0' ? 'public' : 'wait', needsAction: game.current_speaker === 'P0' };
+      return { ...stage, step: 0, title: '公共协商', mapLabel: '营地议事 · 轮流发言', hint: game.current_speaker === 'P0' ? '轮到你了，说出今天的计划，回应伙伴或提出合作。' : `正在听${nameFor(game, game.current_speaker)}发言。本轮结束后，由你手动开启私聊。`, actionLabel: game.current_speaker === 'P0' ? '去公开发言' : '查看发言顺序', actionKind: game.current_speaker === 'P0' ? 'public' : 'wait', needsAction: game.current_speaker === 'P0' };
+    case 'PRIVATE_CHAT_READY':
+      return { ...stage, step: 1, title: '准备私聊', mapLabel: '公共协商结束 · 等你开启私聊', hint: '30秒倒计时尚未开始。先读完公共发言，准备好后点击按钮，再进入私聊。', actionLabel: '开始30秒私聊', actionKind: 'start-private', needsAction: true };
     case 'PRIVATE_CHAT':
       return { ...stage, step: 1, title: '私聊协商', mapLabel: '短暂私聊 · 话只给彼此听', hint: game.private_chat?.remaining_messages > 0 ? `每天只有这 30 秒可以私聊。你还可发送 ${game.private_chat.remaining_messages} 条，时间结束后进入报名。` : '今天的私聊额度已用完，可以阅读已有消息，等待报名开始。', actionLabel: '打开私聊', actionKind: 'private', needsAction: game.private_chat?.remaining_messages > 0 };
     case 'REGISTRATION': {
@@ -72,6 +74,7 @@ export function islandModel(game) {
     let status = '待登岛';
     if (phase === 'WELCOME') status = '待登岛';
     else if (phase === 'NEGOTIATION') status = speaking ? '发言中' : '等候';
+    else if (phase === 'PRIVATE_CHAT_READY') status = '等待私聊';
     else if (phase === 'PRIVATE_CHAT') status = '私聊时间';
     else if (phase === 'REGISTRATION') status = game.registration_submitted?.[id] ? '已提交' : '选择中';
     else if (phase === 'FINISHED') status = winners.includes(id) ? '唯一胜者' : leaders.some(p => p.id === id) ? '并列 · 未获胜' : '航程结束';

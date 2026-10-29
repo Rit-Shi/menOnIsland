@@ -54,7 +54,7 @@
 
 **Interfaces:** Pure noticeEvents(previous,next) returns unseen sanitized display notices; phaseNotice(event) maps completed/next steps and vote rounds. A small DOM presenter owns its independent queue/timer and can reset per new game. static allowlist serves the module. stageInfo(PRIVATE_CHAT_READY) yields the private step, explicit waiting title and start CTA.
 
-- [ ] RED tests: initial history produces no replay, unchanged polls produce none, several unseen events stay ordered, new-game reset, human-only safe copy and round/day distinctions; ready stage guidance has no active countdown.
-- [ ] Implement start button and waiting scene/chat copy, independent notice presenter with no focus/input capture, animated daylight styling and reduced-motion fallback.
-- [ ] Run full npm test/syntax checks; offline browser walk-through for ready pause/reload/start/countdown, transitions including rapid completion, investment controls, tie/unique ending, desktop/mobile and absence of console errors.
-- [ ] Independent whole-feature read-only review; fix material findings, update docs, commit and restart the main service; verify HTTP 200.
+- [x] RED tests: initial history produces no replay, unchanged polls produce none, several unseen events stay ordered, new-game reset, human-only safe copy and round/day distinctions; ready stage guidance has no active countdown.
+- [x] Implement start button and waiting scene/chat copy, independent notice presenter with no focus/input capture, animated daylight styling and reduced-motion fallback.
+- [x] Run full npm test/syntax checks; offline browser walk-through for ready pause/reload/start/countdown, transitions, investment controls, tie/unique ending, desktop/mobile and absence of console errors. Rapid completion/queue timing use real engine/controller tests. Reduced motion inspected in code; browser preference emulation unavailable.
+- [x] Independent whole-feature read-only review; fix material findings, update docs, commit and restart the main service; verify HTTP 200.

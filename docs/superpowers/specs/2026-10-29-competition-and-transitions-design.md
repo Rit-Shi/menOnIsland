@@ -4,6 +4,7 @@
 
 - Agents should understand that contributions may exceed task thresholds or be below an equal share; thresholds are not investment caps or required individual shares.
 - Victory requires a uniquely highest final balance. Sharing the highest balance does not count as winning.
+- User steering: winning is the only goal. Cooperation, fairness, promises and reputation are optional strategies rather than independent objectives; personality cannot override this goal.
 - Public negotiation must end at a waiting screen. The player explicitly starts the 30-second private window.
 - Every completed phase needs a conspicuous, attractive transition notice consistent with the daylight island.
 

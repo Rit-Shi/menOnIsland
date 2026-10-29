@@ -23,7 +23,7 @@ const view = game => getHumanView(game, now);
 
 test('daily guidance maps all real phases to the six visible steps', () => {
   const game = view(createGame({ id: 'guide', randomInt: () => 0 }));
-  const steps = { NEGOTIATION: 0, PRIVATE_CHAT: 1, REGISTRATION: 2, VOTE_SPEECH: 3, VOTE_SUBMISSION: 3, INVESTMENT_SUBMISSION: 4, ROUND_UPDATE: 5, FINISHED: 5 };
+  const steps = { NEGOTIATION: 0, PRIVATE_CHAT_READY: 1, PRIVATE_CHAT: 1, REGISTRATION: 2, VOTE_SPEECH: 3, VOTE_SUBMISSION: 3, INVESTMENT_SUBMISSION: 4, ROUND_UPDATE: 5, FINISHED: 5 };
   for (const [phase, step] of Object.entries(steps)) {
     game.phase = phase;
     const stage = stageInfo(game);
@@ -33,6 +33,10 @@ test('daily guidance maps all real phases to the six visible steps', () => {
   assert.equal(stageInfo(null).step, -1);
   assert.equal(islandModel(null).roles.length, 4);
   assert.ok(islandModel(null).roles.every(role => role.status === '待登岛'));
+  game.phase='PRIVATE_CHAT_READY';game.private_chat=null;
+  assert.equal(stageInfo(game).actionKind,'start-private');
+  assert.match(stageInfo(game).hint,/尚未开始/);
+  assert.ok(islandModel(game).roles.every(role=>role.location==='camp'&&role.status==='等待私聊'));
 });
 
 test('guidance distinguishes the players own turn and private voting/investment obligations', () => {

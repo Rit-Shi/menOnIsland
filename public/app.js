@@ -1,4 +1,5 @@
 import { stageInfo, islandMarkup, updateIslandScene } from './island-scene.js';
+import { noticeEvents, createPhaseNotices } from './phase-notice.js';
 
 const $ = selector => document.querySelector(selector);
 const root = $('#app');
@@ -7,7 +8,7 @@ const money = gold => String(gold);
 const signed = gold => `${gold > 0 ? '+' : ''}${money(gold)}`;
 const names = { P0: '玩家', P1: '林舟', P2: '沈默', P3: '顾寒', SYSTEM: '岛屿广播' };
 const colors = { P0: '#bd8739', P1: '#3f876a', P2: '#557faa', P3: '#ac745e' };
-const labels = { NEGOTIATION: '公共协商', PRIVATE_CHAT: '私聊协商', REGISTRATION: '任务报名', VOTE_SPEECH: '淘汰前发言', VOTE_SUBMISSION: '秘密投票', INVESTMENT_SUBMISSION: '秘密投入', ROUND_UPDATE: '本日结算', FINISHED: '最终排名' };
+const labels = { NEGOTIATION: '公共协商', PRIVATE_CHAT_READY: '准备私聊', PRIVATE_CHAT: '私聊协商', REGISTRATION: '任务报名', VOTE_SPEECH: '淘汰前发言', VOTE_SUBMISSION: '秘密投票', INVESTMENT_SUBMISSION: '秘密投入', ROUND_UPDATE: '本日结算', FINISHED: '最终排名' };
 const taskNames = { A: '收集淡水', B: '搭建庇护所', C: '修复通讯塔' };
 const statusNames = { registered: '已报名', confirmed: '正式队员', insufficient_members: '人数不足', eliminated: '已被淘汰' };
 let game = null;
@@ -18,6 +19,17 @@ let polling = false;
 let toastTimer;
 let serverClockOffset = 0;
 let announcedStage = '';
+const phaseNotices = createPhaseNotices({
+  show(notice) {
+    const element = $('#phase-transition');
+    element.dataset.tone = notice.tone;
+    element.querySelector('[data-transition-kicker]').textContent = notice.kicker;
+    element.querySelector('[data-transition-title]').textContent = notice.title;
+    element.querySelector('[data-transition-detail]').textContent = notice.detail;
+    element.classList.add('is-visible');
+  },
+  hide() { $('#phase-transition').classList.remove('is-visible'); },
+});
 const drafts = {};
 const privateSeconds = () => Math.max(0, Math.ceil(((game?.private_chat?.ends_at || 0) - Date.now() - serverClockOffset) / 1000));
 
@@ -52,6 +64,8 @@ function accept(next) {
   if (game && game.id === next.id && next.version < game.version) return;
   if (game && game.id === next.id && next.version === game.version && next.messages.length < game.messages.length) return;
   if (next.server_time != null) serverClockOffset = next.server_time - Date.now();
+  if (!game || game.id !== next.id) phaseNotices.reset();
+  phaseNotices.enqueue(noticeEvents(game, next));
   if (next.phase === 'PRIVATE_CHAT' && game?.phase !== 'PRIVATE_CHAT' && channel === 'public') channel = 'P1';
   const changed = !game || game.id !== next.id || game.version !== next.version || game.messages.length !== next.messages.length;
   game = next;
@@ -72,7 +86,7 @@ async function action(value) {
 async function newGame() {
   if (busy || (game && !window.confirm('开始新一局？当前页面将切换到新的游戏。'))) return;
   busy = true; render();
-  try { game = await api('/api/games', {}); channel = 'public'; }
+  try { game = await api('/api/games', {}); phaseNotices.reset(); channel = 'public'; }
   catch (error) { toast(error.message); }
   finally { busy = false; render(); }
 }
@@ -94,6 +108,7 @@ function focusKey(element) {
 const motionBehavior = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth';
 function focusStage() {
   const stage = stageInfo(game);
+  if (stage.actionKind === 'start-private') { action({type:'start_private_chat'}); return; }
   if (stage.actionKind === 'public' || stage.actionKind === 'private') {
     channel = stage.actionKind === 'public' ? 'public' : channel === 'public' ? 'P1' : channel;
     render();
@@ -134,7 +149,9 @@ function phaseAction() {
   const waiting = `<div class="waiting"><span class="pulse-ring"></span><span>${thinking ? `${esc(thinking)}正在思考…` : '等待其他角色完成行动…'}</span></div>`;
   let content = '';
   if (['NEGOTIATION','VOTE_SPEECH'].includes(phase)) {
-    content = game.current_speaker === 'P0' ? `<p>轮到你了。可以提出组队方案、承诺投入，或回应其他幸存者。</p><button class="primary" data-action="focus-public">前往公共频道发言 ${icon('arrow', 17)}</button>` : `<p>当前由${names[game.current_speaker]}发言。${phase === 'NEGOTIATION' ? '公共协商结束后将开启 30 秒私聊。' : '本轮候选人发言结束后将进行秘密投票。'}</p>${waiting}`;
+    content = game.current_speaker === 'P0' ? `<p>轮到你了。可以提出组队方案、承诺投入，或回应其他幸存者。</p><button class="primary" data-action="focus-public">前往公共频道发言 ${icon('arrow', 17)}</button>` : `<p>当前由${names[game.current_speaker]}发言。${phase === 'NEGOTIATION' ? '公共协商结束后，由你点击开启30秒私聊。' : '本轮候选人发言结束后将进行秘密投票。'}</p>${waiting}`;
+  } else if (phase === 'PRIVATE_CHAT_READY') {
+    content = `<p>公共协商已结束。你可以先读完大家的发言，准备好后再开启私聊。点击后才开始30秒计时，Agent也会从那时起主动联系或回复。</p><button class="primary" data-action="start-private" ${busy ? 'disabled' : ''}>开始30秒私聊 ${icon('arrow',17)}</button>`;
   } else if (phase === 'PRIVATE_CHAT') {
     content = `<div class="private-chat-status"><strong><span data-private-countdown>${privateSeconds()}</span><small> 秒</small></strong><span>你今天还可发送 <b>${game.private_chat.remaining_messages}</b> / 5 条私聊</span></div><p>现在可以自由私聊谈判，Agent 也会主动联系或回复。跨所有对象合计最多发送 5 条，回复同样计次；倒计时结束后自动进入报名。</p><div class="private-chat-contacts">${['P1','P2','P3'].map(id => `<button class="outline-button" data-channel="${id}">${icon('chat', 15)} 私聊${names[id]}</button>`).join('')}</div>`;
   } else if (phase === 'REGISTRATION') {
@@ -156,7 +173,7 @@ function phaseAction() {
       const max = me.gold;
       const defaultAmount = Math.min(max, task === 'B' ? 5 : 10);
       const value = drafts[`investment-${game.current_day}`] ?? defaultAmount;
-      content = `<form data-form="invest"><p>你已加入${taskNames[task]}。全队至少投入 ${task === 'B' ? 10 : 30} 金币才成功，成功奖金平分后每人向上取整，失败不退还投入。</p><div class="investment-input"><label for="investment">你的秘密投入</label><div><input id="investment" data-draft="investment-${game.current_day}" type="number" name="amount" min="0" max="${max}" step="1" value="${esc(value)}" required><span>/ ${max} 可用</span></div></div><div class="action-row"><small>${icon('lock', 13)}提交后不可修改，队友无法提前查看</small><button class="primary" ${busy ? 'disabled' : ''}>锁定投入 ${icon('arrow', 16)}</button></div></form>`;
+      content = `<form data-form="invest"><p>你已加入${taskNames[task]}。全队至少投入 ${task === 'B' ? 10 : 30} 金币才成功；门槛不是上限，你可投入0至${max}金币，不必平均出资。成功奖金按实际总投入计算，平分后向上取整；失败不退还投入。</p><div class="investment-input"><label for="investment">你的秘密投入</label><div><input id="investment" data-draft="investment-${game.current_day}" type="number" name="amount" min="0" max="${max}" step="1" value="${esc(value)}" required><span>/ ${max} 可用</span></div></div><div class="action-row"><small>${icon('lock', 13)}提交后不可修改，队友无法提前查看</small><button class="primary" ${busy ? 'disabled' : ''}>锁定投入 ${icon('arrow', 16)}</button></div></form>`;
     }
   } else if (phase === 'ROUND_UPDATE') content = `<p>今日所有任务已完成。下方可查看你的详细结算与公开金币走势。</p><button class="primary" data-action="next">进入第 ${game.current_day + 1} 天 ${icon('arrow', 17)}</button>`;
   else content = `<p>${game.ranking.some(p => p.is_winner) ? '八天结束，' + game.ranking.filter(p => p.is_winner).map(p => p.id === 'P0' ? '你' : esc(p.name)).join('') + '成为唯一胜利者。' : '八天结束，最高金币并列，本局无人获胜。并列第一不算赢。'}每一次承诺与选择，都留在了这座岛上。</p><button class="primary" data-action="new">再赴孤岛 ${icon('arrow', 17)}</button>`;
@@ -175,7 +192,7 @@ function chatPanel() {
   const privateAllowed = game?.phase === 'PRIVATE_CHAT' && privateSeconds() > 0 && game.private_chat.remaining_messages > 0;
   const key = channel === 'public' ? `speech-${game?.current_day || 1}` : `private-${channel}`;
   const allowed = channel === 'public' ? canSpeak : privateAllowed;
-  return `<aside class="chat-panel"><div class="chat-heading"><h2>${icon('chat', 20)}幸存者频道</h2><span class="channel-tag">${channel === 'public' ? '公开' : icon('lock', 12) + ' 私密'}</span></div><div class="chat-tabs" role="tablist" aria-label="聊天频道"><button role="tab" aria-selected="${channel === 'public'}" data-channel="public">公共频道${canSpeak ? '<i></i>' : ''}</button>${['P1','P2','P3'].map(id => `<button role="tab" aria-selected="${channel === id}" data-channel="${id}">${names[id]}</button>`).join('')}</div><div class="channel-description">${channel === 'public' ? '四名幸存者共享消息。承诺可以被违背。' : `仅你与${names[channel]}可见。${game?.phase === 'PRIVATE_CHAT' ? `还可发 ${game.private_chat.remaining_messages}/5 条 · 剩余 <span data-private-countdown>${privateSeconds()}</span> 秒` : '每天公共协商后开放 30 秒私聊。'}`}</div><div id="chat-feed" class="chat-feed" aria-live="polite" aria-relevant="additions">${messages.length ? messages.map(messageMarkup).join('') : `<div class="chat-empty">${icon('chat', 36)}<h3>${game ? '还没有消息' : '故事从一句话开始'}</h3><p>${game ? '试着联系一位幸存者，提出你的计划。' : '开始游戏后，与三名 Agent 共同商量任务。谁会兑现承诺，由你判断。'}</p></div>`}</div><form data-form="chat" class="chat-composer"><label class="sr-only" for="chat-input">${channel === 'public' ? '公开发言' : '私人消息'}</label><textarea id="chat-input" data-draft="${key}" name="message" maxlength="1000" rows="3" ${!allowed || busy ? 'disabled' : ''} placeholder="${!game ? '开始游戏，加入协商…' : channel !== 'public' ? privateAllowed ? `发给${names[channel]}的私信…` : game.phase === 'PRIVATE_CHAT' && game.private_chat.remaining_messages === 0 ? '今天的 5 条私聊额度已用完' : '仅在每天 30 秒私聊阶段可以发送…' : canSpeak ? '说出你的计划，或回应他人的承诺…' : game.phase === 'FINISHED' ? '这段航程已经结束' : '轮到你时可以公开发言…'}">${esc(drafts[key] || '')}</textarea>${channel === 'public' && canSpeak ? `<div class="promise-row"><label for="promise-task">公开承诺</label><select id="promise-task" data-draft="promise-task" name="promise_task"><option value="">不记录金额</option><option value="B" ${drafts['promise-task'] === 'B' ? 'selected' : ''}>B 庇护所</option><option value="C" ${drafts['promise-task'] === 'C' ? 'selected' : ''}>C 通讯塔</option></select><input aria-label="承诺投入金额" data-draft="promise-amount" name="promise_amount" type="number" min="0" max="${game.players[0].gold}" step="1" placeholder="金币" value="${esc(drafts['promise-amount'] || '')}"></div>` : ''}<div class="composer-footer"><span>${channel === 'public' ? 'Ctrl / ⌘ + Enter 发送' : icon('lock', 12) + ' 仅双方可见'}</span><button class="send-button" ${!allowed || busy ? 'disabled' : ''} aria-label="${channel === 'public' ? '提交公开发言' : '发送私信'}">${busy ? '提交中' : '发送'} ${icon('arrow', 15)}</button></div></form></aside>`;
+  return `<aside class="chat-panel"><div class="chat-heading"><h2>${icon('chat', 20)}幸存者频道</h2><span class="channel-tag">${channel === 'public' ? '公开' : icon('lock', 12) + ' 私密'}</span></div><div class="chat-tabs" role="tablist" aria-label="聊天频道"><button role="tab" aria-selected="${channel === 'public'}" data-channel="public">公共频道${canSpeak ? '<i></i>' : ''}</button>${['P1','P2','P3'].map(id => `<button role="tab" aria-selected="${channel === id}" data-channel="${id}">${names[id]}</button>`).join('')}</div><div class="channel-description">${channel === 'public' ? '四名幸存者共享消息。承诺可以被违背。' : `仅你与${names[channel]}可见。${game?.phase === 'PRIVATE_CHAT' ? `还可发 ${game.private_chat.remaining_messages}/5 条 · 剩余 <span data-private-countdown>${privateSeconds()}</span> 秒` : '每天点击开启后有30秒私聊；未开启时不计时。'}`}</div><div id="chat-feed" class="chat-feed" aria-live="polite" aria-relevant="additions">${messages.length ? messages.map(messageMarkup).join('') : `<div class="chat-empty">${icon('chat', 36)}<h3>${game ? '还没有消息' : '故事从一句话开始'}</h3><p>${game ? '试着联系一位幸存者，提出你的计划。' : '开始游戏后，与三名 Agent 共同商量任务。谁会兑现承诺，由你判断。'}</p></div>`}</div><form data-form="chat" class="chat-composer"><label class="sr-only" for="chat-input">${channel === 'public' ? '公开发言' : '私人消息'}</label><textarea id="chat-input" data-draft="${key}" name="message" maxlength="1000" rows="3" ${!allowed || busy ? 'disabled' : ''} placeholder="${!game ? '开始游戏，加入协商…' : channel !== 'public' ? privateAllowed ? `发给${names[channel]}的私信…` : game.phase === 'PRIVATE_CHAT' && game.private_chat.remaining_messages === 0 ? '今天的 5 条私聊额度已用完' : '仅在每天 30 秒私聊阶段可以发送…' : canSpeak ? '说出你的计划，或回应他人的承诺…' : game.phase === 'PRIVATE_CHAT_READY' ? '公共协商已结束，准备好后开启私聊' : game.phase === 'FINISHED' ? '这段航程已经结束' : '轮到你时可以公开发言…'}">${esc(drafts[key] || '')}</textarea>${channel === 'public' && canSpeak ? `<div class="promise-row"><label for="promise-task">公开承诺</label><select id="promise-task" data-draft="promise-task" name="promise_task"><option value="">不记录金额</option><option value="B" ${drafts['promise-task'] === 'B' ? 'selected' : ''}>B 庇护所</option><option value="C" ${drafts['promise-task'] === 'C' ? 'selected' : ''}>C 通讯塔</option></select><input aria-label="承诺投入金额" data-draft="promise-amount" name="promise_amount" type="number" min="0" max="${game.players[0].gold}" step="1" placeholder="金币" value="${esc(drafts['promise-amount'] || '')}"></div>` : ''}<div class="composer-footer"><span>${channel === 'public' ? 'Ctrl / ⌘ + Enter 发送' : icon('lock', 12) + ' 仅双方可见'}</span><button class="send-button" ${!allowed || busy ? 'disabled' : ''} aria-label="${channel === 'public' ? '提交公开发言' : '发送私信'}">${busy ? '提交中' : '发送'} ${icon('arrow', 15)}</button></div></form></aside>`;
 }
 function chart() {
   if (!game?.round_results.length) return '';
@@ -263,6 +280,7 @@ root.addEventListener('click', event => {
   if (!button || button.disabled) return;
   const kind = button.dataset.action;
   if (kind === 'focus-stage') focusStage();
+  else if (kind === 'start-private') action({type:'start_private_chat'});
   else if (kind === 'map-task') {
     if (game?.phase === 'REGISTRATION') action({type:'register',task_id:button.dataset.task});
     else {

@@ -13,6 +13,11 @@
 <body>
   <div id="app"><div class="initial-loading">正在抵达孤岛…</div></div>
   <div id="phase-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <aside id="phase-transition" class="phase-transition" aria-hidden="true">
+    <div class="transition-sparkles"><i></i><i></i><i></i><i></i></div>
+    <span class="transition-seal">✓</span><div class="transition-copy"><span data-transition-kicker></span><h2 data-transition-title></h2><p data-transition-detail></p></div>
+    <span class="transition-line"></span>
+  </aside>
   <div id="toast" role="status" aria-live="polite"></div>
   <dialog id="rules-dialog">
     <div class="dialog-heading"><span class="eyebrow">THE PROTOCOL</span><button id="close-rules" class="icon-button" aria-label="关闭规则">×</button></div>
@@ -22,7 +27,8 @@
     <div class="rule-line"><b>B · 搭建庇护所</b><span>恰好 2 人，总投入至少 10，成功奖池 ×1.5。</span></div>
     <div class="rule-line"><b>C · 修复通讯塔</b><span>恰好 3 人，总投入至少 30，成功奖池 ×2。</span></div>
     <p>金币只使用整数，除不尽时向上取整。个人可投入从 0 到当前余额的任意整数，不必平均出资。门槛只是成功所需的最低总投入，投入可超过门槛，成功奖金始终按实际总投入计算。零投入也能分得奖金；失败则损失全部投入。报名不足或被淘汰，当日收益为 0。</p>
-    <p>每天先随机选择起始角色，再按编号循环完成一轮公共发言，然后开放 30 秒私聊。每名角色每天跨所有对象合计最多发送 5 条私聊，主动联系和回复共用额度；时间结束后自动进入报名，其他阶段只能阅读私聊记录。</p>
+    <p>唯一目标就是赢。合作、公平、承诺和信誉都是可选策略，只有金币严格高于其他三人才获胜。</p>
+    <p>每天先随机选择起始角色，再按编号循环完成一轮公共发言。公聊结束后由你点击“开始30秒私聊”，点击前不计时。每名角色每天跨所有对象合计最多发送5条私聊，主动联系和回复共用额度；时间结束后自动进入报名，其他阶段只能阅读私聊记录。</p>
     <p>报名阶段各自秘密选择任务，只能查看自己的选择和其他人是否已提交。全体完成选择后，确认并统一公布报名，再处理组队和淘汰；公布前不展示各任务名单或人数。</p>
     <p>超员任务逐轮公开发言、秘密投票淘汰一人，平票随机抽签。</p>
     <p>投票和投入提交后不可修改，统一揭晓。详细结算仅队员可见，私聊仅双方可见；金币余额公开。</p>
