@@ -49,7 +49,7 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
         controller.signal.removeEventListener('abort', abortListener);
       }
       if (!result || controller.signal.aborted || closed) {
-        await writeSubmissionLog(config, observation, 'private_chat', { trace: { call_id: callId } }, 'discarded', null, 'aborted');
+        void writeSubmissionLog(config, observation, 'private_chat', { trace: { call_id: callId } }, 'discarded', null, 'aborted');
         return;
       }
       result.model ||= config.models[actor];
@@ -74,7 +74,7 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
         errorCode = result.code ?? null;
         game.thinking = game.thinking.filter(id => id !== actor);
       });
-      await writeSubmissionLog(config, observation, 'private_chat', result, outcome, outcome === 'discarded' ? null : result.action, errorCode);
+      void writeSubmissionLog(config, observation, 'private_chat', result, outcome, outcome === 'discarded' ? null : result.action, errorCode);
     })().catch(() => {}).finally(() => {
       session.jobs.delete(actor);
       if (!closed) onChange(snapshot.id);

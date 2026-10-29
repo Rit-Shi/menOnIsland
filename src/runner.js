@@ -58,7 +58,7 @@ export function createRunner({ store, config, decision = requestDecision, random
         game.thinking = [];
         game.version++;
       });
-      await Promise.all(outcomes.map(({ request, result, outcome, code }) => writeSubmissionLog(config, request.observation, request.kind, result, outcome, result.action, code)));
+      for (const { request, result, outcome, code } of outcomes) void writeSubmissionLog(config, request.observation, request.kind, result, outcome, result.action, code);
     }
     throw new Error('automatic_step_limit');
   }

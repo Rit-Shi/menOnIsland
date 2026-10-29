@@ -120,9 +120,11 @@ export async function requestDecision(config, observation, kind, { signal, callI
       responseData.http_status = response.status;
       responseData.request_id = response.headers.get('x-request-id') || response.headers.get('request-id');
       const raw = await response.text();
-      if (!response.ok) { responseData.body = raw; throw new Error(`http_${response.status}`); }
+      responseData.body = raw;
+      if (!response.ok) throw new Error(`http_${response.status}`);
       let payload;
-      try { payload = JSON.parse(raw); } catch { responseData.body = raw; throw decisionError('invalid_gateway_response', '网关返回的响应体不是合法JSON。'); }
+      try { payload = JSON.parse(raw); } catch { throw decisionError('invalid_gateway_response', '网关返回的响应体不是合法JSON。'); }
+      if (!Array.isArray(payload?.choices) || !payload.choices[0]?.message || typeof payload.choices[0].message !== 'object' || Array.isArray(payload.choices[0].message)) throw decisionError('invalid_gateway_response', '网关响应缺少合法的choices[0].message。');
       const message = payload?.choices?.[0]?.message;
       Object.assign(responseData, { content: message?.content ?? null, finish_reason: payload?.choices?.[0]?.finish_reason ?? null, usage: payload?.usage ?? null, tool_calls: message?.tool_calls ?? null, refusal: message?.refusal ?? null });
       usage += Number.isFinite(payload?.usage?.total_tokens) ? payload.usage.total_tokens : 0;
@@ -137,7 +139,7 @@ export async function requestDecision(config, observation, kind, { signal, callI
       trace.error_codes.push(code);
     }
     const willRetry = !valid && attempt < 3 && !abort.aborted && retryable(code);
-    await writeModelLog(config, { event: 'model_attempt', game_id: observation.id, call_id: callId, day: observation.current_day, phase: observation.phase, kind, actor_id: actorId, model, attempt, started_at: new Date(attemptStarted).toISOString(), elapsed_ms: Date.now() - attemptStarted, request: body, response: responseData, outcome: valid ? 'valid' : code, error_detail: errorDetail, will_retry: willRetry });
+    void writeModelLog(config, { event: 'model_attempt', game_id: observation.id, call_id: callId, day: observation.current_day, phase: observation.phase, kind, actor_id: actorId, model, attempt, started_at: new Date(attemptStarted).toISOString(), elapsed_ms: Date.now() - attemptStarted, request: body, response: responseData, outcome: valid ? 'valid' : code, error_detail: errorDetail, will_retry: willRetry });
     if (valid || !willRetry) break;
     if (code === 'invalid_JSON' || code === 'invalid_action') {
       if (typeof responseData.content === 'string' && responseData.content) messages.push({ role: 'assistant', content: responseData.content });
@@ -151,6 +153,6 @@ export async function requestDecision(config, observation, kind, { signal, callI
     if (trace.error_codes.at(-1) !== code) trace.error_codes.push(code);
     result = { action: fallbackAction(observation, kind), privateMessages: [], fallback: true, model, code, trace };
   }
-  await writeModelLog(config, { event: 'decision_result', game_id: observation.id, call_id: callId, day: observation.current_day, phase: observation.phase, kind, actor_id: actorId, model, elapsed_ms: Date.now() - started, attempt_count: trace.attempt_count, error_codes: trace.error_codes, code: result.code ?? null, fallback: result.fallback, action: result.action });
+  void writeModelLog(config, { event: 'decision_result', game_id: observation.id, call_id: callId, day: observation.current_day, phase: observation.phase, kind, actor_id: actorId, model, elapsed_ms: Date.now() - started, attempt_count: trace.attempt_count, error_codes: trace.error_codes, code: result.code ?? null, fallback: result.fallback, action: result.action });
   return result;
 }

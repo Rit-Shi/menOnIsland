@@ -3,6 +3,16 @@ import { join } from 'node:path';
 
 const queues = new Map();
 
+export async function flushModelLogs(timeoutMs = 1000) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.allSettled([...queues.values()]).then(() => true),
+      new Promise(resolve => { timer = setTimeout(() => resolve(false), timeoutMs); }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
 export async function writeModelLog(config, record) {
   if (!config.dataDir) return false;
   try {
@@ -14,7 +24,7 @@ export async function writeModelLog(config, record) {
     const previous = queues.get(filename) ?? Promise.resolve();
     const next = previous.catch(() => {}).then(async () => {
       await mkdir(directory, { recursive: true });
-      await appendFile(filename, `${serialized}\n`, { encoding: 'utf8', mode: 0o600 });
+      await (config.modelLogAppend || appendFile)(filename, `${serialized}\n`, { encoding: 'utf8', mode: 0o600 });
     });
     queues.set(filename, next);
     try { await next; } finally { if (queues.get(filename) === next) queues.delete(filename); }

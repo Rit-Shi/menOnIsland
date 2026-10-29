@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, appendFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGame, applyAction, advanceTime, privateMessagesSent } from '../src/engine.js';
@@ -9,6 +9,7 @@ import { getObservation, getHumanView } from '../src/observation.js';
 import { requestDecision } from '../src/agents.js';
 import { GameStore } from '../src/store.js';
 import { createRunner } from '../src/runner.js';
+import { flushModelLogs } from '../src/model-log.js';
 
 async function fixture(t, respond) {
   const directory = await mkdtemp(join(tmpdir(), 'island-model-trace-'));
@@ -19,12 +20,12 @@ async function fixture(t, respond) {
     await respond(req, res, requests.length);
   });
   await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve));
-  t.after(async () => { gateway.closeAllConnections(); await new Promise(resolve => gateway.close(resolve)); await rm(directory, { recursive: true, force: true }); });
+  t.after(async () => { gateway.closeAllConnections(); await new Promise(resolve => gateway.close(resolve)); await flushModelLogs(); await rm(directory, { recursive: true, force: true }); });
   const game = createGame({ id: 'model-trace', randomInt: () => 0 });
   for (const id of game.negotiation_order) applyAction(game, id, { type: 'speech', message: '公开协商' });
   advanceTime(game, () => game.private_chat.ends_at);
   const config = { baseUrl: `http://127.0.0.1:${gateway.address().port}/v1`, apiKey: 'private-test-credential', models: { P1: 'one', P2: 'two', P3: 'three' }, timeoutMs: 1000, dataDir: directory };
-  const logs = async () => (await readFile(join(directory, 'model-calls', 'model-trace.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  const logs = async () => { await flushModelLogs(); return (await readFile(join(directory, 'model-calls', 'model-trace.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line)); };
   return { game, config, directory, requests, logs };
 }
 function reply(res, content, finishReason = 'stop') {
@@ -106,6 +107,7 @@ test('log storage failure cannot turn a valid action into a fallback', async t =
   const notices = [];
   t.mock.method(console, 'error', message => notices.push(message));
   const result = await requestDecision({ ...f.config, dataDir: blocked }, getObservation(f.game, 'P1'), 'register');
+  await flushModelLogs();
   assert.equal(result.fallback, false);
   assert.deepEqual(result.action, { type: 'register', task_id: 'B' });
   assert.ok(notices.some(message => message.includes('[model-log]')));
@@ -171,6 +173,8 @@ test('malformed JSON is returned to the same Agent for correction before any fal
   const attempts = records.filter(record => record.event === 'model_attempt');
   assert.deepEqual(attempts.map(record => record.outcome), ['invalid_JSON', 'valid']);
   assert.equal(attempts[0].will_retry, true);
+  assert.equal(attempts[0].request.messages.length, 2);
+  assert.equal(attempts[1].request.messages.length, 4);
   assert.equal(records.find(record => record.event === 'decision_result').fallback, false);
 });
 
@@ -333,4 +337,79 @@ test('private deadline cancels an in-progress correction without sending it or s
   assert.equal(game.diagnostics.length, 0);
   const records = await f.logs();
   assert.ok(records.some(record => record.event === 'submission' && record.actor_id === 'P1' && record.kind === 'private_chat' && record.outcome === 'discarded'));
+});
+
+test('hanging log storage cannot delay correction, cancellation or the decision result', async t => {
+  const f = await fixture(t, (_req, res, count) => reply(res, count === 1 ? 'bad output' : '{"task_id":"B"}'));
+  let release;
+  const storage = new Promise(resolve => { release = resolve; });
+  const config = { ...f.config, modelLogAppend: async (...args) => { await storage; await appendFile(...args); } };
+  const pending = requestDecision(config, getObservation(f.game, 'P1'), 'register');
+  let response;
+  let drained;
+  let cancelled;
+  try {
+    response = await Promise.race([pending, new Promise(resolve => setTimeout(() => resolve('blocked-by-storage'), 150))]);
+    drained = await flushModelLogs(10);
+    const controller = new AbortController();
+    controller.abort();
+    cancelled = await Promise.race([requestDecision(config, getObservation(f.game, 'P1'), 'register', { signal: controller.signal }), new Promise(resolve => setTimeout(() => resolve('blocked-cancellation'), 50))]);
+  }
+  finally { release(); }
+  const result = await pending;
+  assert.notEqual(response, 'blocked-by-storage');
+  assert.equal(result.fallback, false);
+  assert.equal(f.requests.length, 2);
+  assert.equal(drained, false);
+  assert.equal(cancelled.code, 'aborted');
+  assert.equal(await flushModelLogs(), true);
+});
+
+test('successful-HTTP error envelopes preserve the exact provider evidence and distinct error code', async t => {
+  const body = JSON.stringify({ error: { code: 'upstream_parse_failed', message: 'DIAGNOSTIC_SENTINEL' } });
+  const f = await fixture(t, (_req, res) => res.end(body));
+  const result = await requestDecision(f.config, getObservation(f.game, 'P1'), 'register');
+  assert.equal(result.code, 'invalid_gateway_response');
+  const attempts = (await f.logs()).filter(record => record.event === 'model_attempt');
+  assert.equal(attempts.length, 3);
+  assert.ok(attempts.every(record => record.response.body === body));
+  assert.ok(attempts.every(record => record.outcome === 'invalid_gateway_response'));
+});
+
+test('missing choices and empty content retain raw envelopes, including unselected provider metadata', async t => {
+  for (const payload of [{ choices: [] }, { choices: 'invalid' }, { choices: [{ message: null }] }, { choices: [{ message: { content: '' } }], provider_debug: 'EMPTY_CONTENT_REASON' }]) {
+    const raw = JSON.stringify(payload);
+    const f = await fixture(t, (_req, res) => res.end(raw));
+    const result = await requestDecision(f.config, getObservation(f.game, 'P1'), 'register');
+    assert.equal(result.code, payload.provider_debug ? 'invalid_JSON' : 'invalid_gateway_response');
+    assert.equal((await f.logs()).find(record => record.event === 'model_attempt').response.body, raw);
+  }
+});
+
+test('blocked submission logs cannot delay opening and expiring the private phase', async t => {
+  const f = await fixture(t, (_req, res) => reply(res, '{"pass":true}'));
+  let time = 1000;
+  let release;
+  const storage = new Promise(resolve => { release = resolve; });
+  const config = { ...f.config, modelLogAppend: async (...args) => { await storage; await appendFile(...args); } };
+  const game = createGame({ id: f.game.id, randomInt: () => 0 });
+  for (const id of ['P0', 'P1', 'P2']) applyAction(game, id, { type: 'speech', message: '依次公开发言。' });
+  const store = new GameStore(f.directory);
+  await store.save(game);
+  const runner = createRunner({ store, config, now: () => time, decision: async (_config, _observation, kind) => {
+    if (kind === 'speech') return { action: { type: 'speech', message: '最后一名公开发言。' }, fallback: false };
+    if (kind === 'private_chat') { time = 31000; return { action: { type: 'private_pass' }, fallback: false }; }
+    return { action: { type: 'register', task_id: 'A' }, fallback: false };
+  } });
+  t.after(() => runner.close());
+  const pending = (async () => { await runner.kick(game.id); await runner.idle(); })();
+  let response;
+  try { response = await Promise.race([pending.then(() => 'complete'), new Promise(resolve => setTimeout(() => resolve('blocked'), 150))]); }
+  finally { release(); }
+  await pending;
+  assert.equal(response, 'complete');
+  const current = await store.load(game.id);
+  assert.equal(current.phase, 'REGISTRATION');
+  assert.equal(current.private_chat.ends_at, 31000);
+  assert.deepEqual(current.registrations, { P1: 'A', P2: 'A', P3: 'A' });
 });

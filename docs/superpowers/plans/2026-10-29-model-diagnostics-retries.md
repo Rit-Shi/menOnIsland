@@ -46,5 +46,5 @@
 - [x] Write RED tests for invalid→valid correction, illegal→valid correction, exhausted attempts, non-retryable errors, transient errors, shared timeout, explicit cancellation and exactly-once engine submission.
 - [x] Implement bounded retries and validation feedback using only the original identity-filtered observation.
 - [x] Verify recovered diagnostics, final fallback notices, private deadline/quota and hidden response privacy. Update protocol and logging documentation.
-- [ ] Run the full suite, review the changes independently, resolve material findings, then commit completed work.
+- [x] Run the full suite, review the changes independently, resolve material findings, then commit completed work.
 - [ ] Verify an offline browser game and JSONL artifacts, restart the main service, and confirm its HTTP response.
