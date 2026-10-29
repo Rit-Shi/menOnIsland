@@ -17,11 +17,14 @@ function json(response, status, value, headers = {}) {
 }
 async function readBody(request) {
   if (!request.headers['content-type']?.startsWith('application/json')) throw new RuleError('需要 JSON 请求', 415);
-  let body = '';
+  const chunks = [];
+  let size = 0;
   for await (const chunk of request) {
-    body += chunk;
-    if (Buffer.byteLength(body) > 16384) throw new RuleError('请求过大', 413);
+    size += chunk.length;
+    if (size > 16384) throw new RuleError('请求过大', 413);
+    chunks.push(chunk);
   }
+  const body = Buffer.concat(chunks).toString('utf8');
   try { return JSON.parse(body || '{}'); } catch { throw new RuleError('JSON 格式错误', 400); }
 }
 export function createApp({ config = loadConfig(), decision, randomInt } = {}) {

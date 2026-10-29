@@ -106,3 +106,18 @@ test('eight days finish with exact shared ranks and no ninth day', () => {
   assert.deepEqual(game.ranking.map(p => p.rank), [1, 1, 1, 1]);
   assert.throws(() => applyAction(game, 'P0', { type: 'next_day' }), /阶段/);
 });
+
+test('registration reconsideration is bounded and all agents must finish before lock', () => {
+  const game = createGame({ id: 'revise', randomInt: fixed });
+  ids.forEach(id => applyAction(game, id, { type: 'speech', message: '先看看' }));
+  ids.forEach(id => applyAction(game, id, { type: 'register', task_id: 'B' }));
+  for (let round = 0; round < 2; round++) {
+    applyAction(game, 'P0', { type: 'reconsider_registrations' });
+    assert.throws(() => applyAction(game, 'P0', { type: 'lock_registration' }), /重新评估/);
+    ids.slice(1).forEach(id => applyAction(game, id, { type: 'register', task_id: 'A' }));
+  }
+  assert.throws(() => applyAction(game, 'P0', { type: 'reconsider_registrations' }), /次数/);
+  assert.deepEqual(ids.slice(1).map(id => game.registrations[id]), ['A', 'A', 'A']);
+  applyAction(game, 'P0', { type: 'lock_registration' });
+  assert.equal(game.phase, 'ROUND_UPDATE');
+});

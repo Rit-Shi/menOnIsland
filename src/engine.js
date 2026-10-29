@@ -37,6 +37,9 @@ function startDay(game, randomInt) {
   game.negotiation_turn_index = 0;
   game.registrations = {};
   game.registration_status = {};
+  game.registration_revision = 0;
+  game.registration_reviews = 0;
+  game.agent_registration_revision = {};
   game.active_teams = {};
   game.investments = {};
   game.vote_session = null;
@@ -123,12 +126,27 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt) 
       requireRule(owns(TASKS, action.task_id), '只能选择任务 A、B、C');
       game.registrations[actorId] = action.task_id;
       game.registration_status[actorId] = 'registered';
+      if (actorId !== 'P0') {
+        game.agent_registration_revision ??= {};
+        game.agent_registration_revision[actorId] = game.registration_revision ?? 0;
+      }
+      break;
+    }
+    case 'reconsider_registrations': {
+      requireRule(actorId === 'P0' && game.phase === 'REGISTRATION', '当前阶段不能重新评估报名');
+      requireRule((game.registration_reviews ?? 0) < 2, '今天的重新评估次数已用完');
+      requireRule(IDS.every(id => owns(game.registrations, id)), '请先完成全体初次报名');
+      requireRule(!game.thinking?.length && IDS.slice(1).every(id => (game.agent_registration_revision?.[id] ?? 0) === (game.registration_revision ?? 0)), '请等待本次重新评估结束');
+      game.registration_reviews = (game.registration_reviews ?? 0) + 1;
+      game.registration_revision = (game.registration_revision ?? 0) + 1;
+      addMessage(game, 'SYSTEM', '玩家邀请三名 Agent 根据最新报名和各自收到的消息重新评估任务选择。');
       break;
     }
     case 'lock_registration': {
       requireRule(actorId === 'P0', '只有玩家可以结束报名');
       requireRule(game.phase === 'REGISTRATION', '当前阶段不能锁定报名');
       requireRule(IDS.every(id => owns(game.registrations, id)), '还有角色未完成报名');
+      requireRule(IDS.slice(1).every(id => (game.agent_registration_revision?.[id] ?? 0) === (game.registration_revision ?? 0)), '请等待 Agent 完成本次重新评估');
       for (const task of Object.values(TASKS)) {
         const members = IDS.filter(id => game.registrations[id] === task.id);
         if (task.id === 'A') members.forEach(id => { game.registration_status[id] = 'confirmed'; });

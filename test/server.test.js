@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../server.js';
 import { loadConfig } from '../src/config.js';
+import { request as httpRequest } from 'node:http';
 
 async function fixture(t, decision) {
   const dir = await mkdtemp(join(tmpdir(), 'island-test-'));
@@ -132,4 +133,44 @@ test('accepted request identifiers cannot cause duplicate private messages', asy
   await f.request('/api/action', body);
   const state = (await f.request('/api/state')).data;
   assert.equal(state.messages.filter(m => m.text === '只应出现一次').length, 1);
+});
+
+test('UTF-8 characters spanning HTTP chunks are preserved in persisted private chat', async t => {
+  const f = await fixture(t);
+  await f.request('/api/games', {});
+  const payload = Buffer.from(JSON.stringify({ action: { type: 'private_message', to: 'P1', message: '你好' } }));
+  const split = payload.indexOf(Buffer.from('你')) + 1;
+  const response = await new Promise((resolve, reject) => {
+    const request = httpRequest(f.base + '/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length, Origin: f.base, Cookie: f.getCookie() } }, response => {
+      response.setEncoding('utf8');
+      let body = ''; response.on('data', chunk => { body += chunk; });
+      response.on('end', () => resolve({ status: response.statusCode, data: JSON.parse(body) }));
+    });
+    request.on('error', reject);
+    request.write(payload.subarray(0, split));
+    setTimeout(() => request.end(payload.subarray(split)), 30);
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.data.messages.at(-1).text, '你好');
+});
+
+test('agents can reconsider their existing task after the player changes registration', async t => {
+  const f = await fixture(t, async (_config, observation, kind) => ({
+    action: kind === 'speech' ? { type: 'speech', message: '我们可以去 B' }
+      : { type: 'register', task_id: observation.registrations.P0 === 'A' ? 'A' : 'B' }, privateMessages: [], fallback: false,
+  }));
+  await f.request('/api/games', {});
+  await f.request('/api/action', { action: { type: 'speech', message: '先考虑 B' } });
+  await f.waitFor('REGISTRATION');
+  const first = (await f.request('/api/state')).data;
+  assert.equal(first.registrations.P1, 'B');
+  await f.request('/api/action', { action: { type: 'register', task_id: 'A' } });
+  const review = await f.request('/api/action', { action: { type: 'reconsider_registrations' } });
+  assert.equal(review.status, 200);
+  for (let i = 0; i < 200; i++) {
+    const state = (await f.request('/api/state')).data;
+    if (state.registrations.P1 === 'A' && state.registrations.P2 === 'A' && state.registrations.P3 === 'A') return;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.fail('Agent registrations were never reconsidered');
 });

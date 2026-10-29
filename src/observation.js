@@ -18,6 +18,8 @@ export function getObservation(game, viewerId) {
     viewer_id: viewerId,
     players: game.players.map(p => ({ id: p.id, name: p.name, is_human: p.is_human, gold_units: p.gold_units, ...(p.id === viewerId ? { statistics: p.statistics } : {}) })),
     tasks: TASKS, registrations: game.registrations, registration_status: game.registration_status,
+    registration_reviews_remaining: 2 - (game.registration_reviews ?? 0),
+    registration_review_pending: IDS.slice(1).some(id => !Object.hasOwn(game.registrations, id) || (game.agent_registration_revision?.[id] ?? 0) < (game.registration_revision ?? 0)),
     active_teams: game.active_teams,
     negotiation_order: game.negotiation_order, negotiation_turn_index: game.negotiation_turn_index,
     current_speaker: currentSpeaker(game),

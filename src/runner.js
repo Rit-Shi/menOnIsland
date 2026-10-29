@@ -7,7 +7,7 @@ function pending(game) {
     const id = currentSpeaker(game);
     return id && id !== 'P0' ? [{ id, kind: 'speech' }] : [];
   }
-  if (game.phase === 'REGISTRATION') return ['P1', 'P2', 'P3'].filter(id => !Object.hasOwn(game.registrations, id)).map(id => ({ id, kind: 'register' }));
+  if (game.phase === 'REGISTRATION') return ['P1', 'P2', 'P3'].filter(id => !Object.hasOwn(game.registrations, id) || (game.agent_registration_revision?.[id] ?? 0) < (game.registration_revision ?? 0)).map(id => ({ id, kind: 'register' }));
   if (game.phase === 'VOTE_SUBMISSION') return game.vote_session.candidate_ids.filter(id => id !== 'P0' && !Object.hasOwn(game.vote_session.votes, id)).map(id => ({ id, kind: 'vote' }));
   if (game.phase === 'INVESTMENT_SUBMISSION') return Object.values(game.active_teams).flat().filter(id => id !== 'P0' && !Object.hasOwn(game.investments, id)).map(id => ({ id, kind: 'invest' }));
   return [];

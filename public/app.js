@@ -116,7 +116,8 @@ function phaseAction() {
     content = game.current_speaker === 'P0' ? `<p>轮到你了。可以提出组队方案、承诺投入，或回应其他幸存者。</p><button class="primary" data-action="focus-public">前往公共频道发言 ${icon('arrow', 17)}</button>` : `<p>当前由${names[game.current_speaker]}发言。你可以阅读公共消息，或在私聊中联系其他角色。</p>${waiting}`;
   } else if (phase === 'REGISTRATION') {
     const all = game.players.every(p => game.registrations[p.id]);
-    content = `<p>点击上方任务卡报名。截止前可修改，人数不足或被淘汰都将失去当日收入。</p><div class="action-row"><span>${game.registrations.P0 ? `你的选择：${taskNames[game.registrations.P0]}` : '你还没有选择任务'}${thinking ? ' · Agent 正在报名' : ''}</span><button class="primary" data-action="lock" ${!all || game.thinking.length || busy ? 'disabled' : ''}>锁定全体报名 ${icon('lock', 16)}</button></div>`;
+    const pending = game.thinking.length || game.registration_review_pending;
+    content = `<p>点击上方任务卡报名。截止前可修改，也可以私聊后请 Agent 重新考虑。人数不足或被淘汰都将失去当日收入。</p><div class="action-row"><span>${game.registrations.P0 ? `你的选择：${taskNames[game.registrations.P0]}` : '你还没有选择任务'}${pending ? ' · Agent 正在评估' : ''}</span><button class="primary" data-action="lock" ${!all || pending || busy ? 'disabled' : ''}>锁定全体报名 ${icon('lock', 16)}</button></div><button class="reconsider-button" data-action="reconsider" ${!all || pending || busy || game.registration_reviews_remaining <= 0 ? 'disabled' : ''}>请 Agent 重新评估报名 <small>今日剩余 ${game.registration_reviews_remaining} 次</small></button>`;
   } else if (phase === 'VOTE_SUBMISSION') {
     if (!game.vote_session.candidate_ids.includes('P0')) content = `<p>你不在本轮候选人中。投票完成后，结果将统一公开。</p>${waiting}`;
     else if (game.my_vote) content = `<p>你的淘汰票已锁定，目标为${names[game.my_vote]}。其他人的选票仍然保密。</p>${waiting}`;
@@ -197,6 +198,7 @@ root.addEventListener('click', event => {
   if (kind === 'new') newGame();
   else if (kind === 'register') action({ type: 'register', task_id: button.dataset.task });
   else if (kind === 'lock') action({ type: 'lock_registration' });
+  else if (kind === 'reconsider') action({ type: 'reconsider_registrations' });
   else if (kind === 'next') action({ type: 'next_day' });
   else if (kind === 'rules') $('#rules-dialog').showModal();
   else if (kind === 'focus-public') { channel = 'public'; render(); $('#chat-input').focus(); $('#chat-input').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
