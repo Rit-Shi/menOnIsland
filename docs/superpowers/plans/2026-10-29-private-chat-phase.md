@@ -47,5 +47,5 @@
 
 - [x] Display a live countdown and remaining daily messages; clearly separate public/private compose availability.
 - [x] Update rules, prompt descriptions, workflow and relevant design sections to remove all-stage private chat.
-- [ ] Run all tests and syntax checks, verify real-time countdown, replies, cap and automatic registration in an offline browser game, restart main service and preserve current progress.
-- [ ] Commit the interface/docs and request a fresh independent review; fix material findings with RED→GREEN tests.
+- [x] Run all tests and syntax checks, verify real-time countdown, replies, cap and automatic registration in an offline browser game, restart main service and preserve current progress.
+- [x] Commit the interface/docs and request a fresh independent review; fix material findings with RED→GREEN tests.
