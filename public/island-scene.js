@@ -69,7 +69,8 @@ export function islandModel(game) {
     const speaking = ['NEGOTIATION', 'VOTE_SPEECH'].includes(phase) && game?.current_speaker === id;
     const delta = currentResult ? (currentResult.public_gold_balances?.[id] ?? player?.gold ?? 10) - (previousResult?.public_gold_balances?.[id] ?? 10) : null;
     let status = '待登岛';
-    if (phase === 'NEGOTIATION') status = speaking ? '发言中' : '等候';
+    if (phase === 'WELCOME') status = '待登岛';
+    else if (phase === 'NEGOTIATION') status = speaking ? '发言中' : '等候';
     else if (phase === 'PRIVATE_CHAT') status = '私聊时间';
     else if (phase === 'REGISTRATION') status = game.registration_submitted?.[id] ? '已提交' : '选择中';
     else if (phase === 'FINISHED') status = winners.includes(id) ? winners.length > 1 ? '并列第一' : '胜者' : '航程结束';
@@ -141,6 +142,7 @@ export function updateIslandScene(element, game) {
     node.dataset.location = role.location;
     node.classList.toggle('is-speaking', role.speaking);
     node.classList.toggle('is-winner', role.winner);
+    node.classList.toggle('is-loss', role.delta < 0);
     node.classList.toggle('is-excluded', ['已淘汰','未成队'].includes(role.status));
     node.querySelector('[data-role-tooltip]').textContent = `${role.name} · ${role.status} · ${role.gold}金币`;
     node.querySelector('.role-initial').textContent = role.name.slice(0,1);

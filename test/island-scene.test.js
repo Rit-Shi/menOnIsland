@@ -31,6 +31,7 @@ test('daily guidance maps all real phases to the six visible steps', () => {
   }
   assert.equal(stageInfo(null).step, -1);
   assert.equal(islandModel(null).roles.length, 4);
+  assert.ok(islandModel(null).roles.every(role => role.status === '待登岛'));
 });
 
 test('guidance distinguishes the players own turn and private voting/investment obligations', () => {

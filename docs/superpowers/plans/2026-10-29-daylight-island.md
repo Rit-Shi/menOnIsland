@@ -43,7 +43,7 @@
 
 **Interfaces:** Style existing components and the new scene/stage elements; preserve all form/action contracts and data-private-countdown hooks.
 
-- [ ] Implement the complete light palette, scene motion, readable cards/chat/dialogs and responsive layout.
-- [ ] Verify representative stages, secret reveal, movement, waiting states, investment controls, settlement and reload in an offline browser game.
-- [ ] Verify reduced motion, mobile width and phase announcements; run the full suite and independent review.
-- [ ] Fix material findings, commit completed work and restart the main service; verify HTTP availability.
+- [x] Implement the complete light palette, scene motion, readable cards/chat/dialogs and responsive layout.
+- [x] Verify representative stages, secret reveal, movement, waiting states, investment controls, settlement and reload in an offline browser game.
+- [x] Verify reduced-motion code paths, mobile width and phase announcements; run the full suite and independent review. Browser OS motion preference was off; media emulation was unavailable.
+- [x] Fix material findings, commit completed work and restart the main service; verify HTTP availability.

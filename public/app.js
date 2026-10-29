@@ -104,7 +104,9 @@ function focusStage() {
   }
   const target = stage.actionKind === 'tasks' ? $('.tasks') : stage.actionKind === 'results' ? $('.ranking-card') || $('.settlement-card') : $('.action-panel');
   target?.scrollIntoView({behavior:motionBehavior(),block:'center'});
-  target?.querySelector('input:not(:disabled), button:not(:disabled)')?.focus({preventScroll:true});
+  const control = target?.querySelector('input:not(:disabled), button:not(:disabled)');
+  if (control) control.focus({preventScroll:true});
+  else if (target) { target.tabIndex = -1; target.focus({preventScroll:true}); }
 }
 function roleCards() {
   const players = game?.players || Object.keys(colors).map(id => ({ id, name: names[id], gold: 10 }));
@@ -212,10 +214,27 @@ function render() {
   const oldScroll = feed?.scrollTop || 0;
   const pageScroll = window.scrollY;
   const day = game?.current_day || 1;
-  root.innerHTML = `<header class="topbar"><a class="brand" href="/">${icon('compass',34)}<span><b>孤岛协议</b><small>ISLAND PROTOCOL</small></span></a><div class="topbar-right"><span class="connection"><i class="${config.configured ? '' : 'offline'}"></i>${config.configured ? '模型网关已配置' : '模型网关未配置'}</span><button class="text-button" data-action="rules">游戏规则</button>${game ? '<button class="outline-button" data-action="new">新航程 ' + icon('arrow',14) + '</button>' : ''}</div></header><main><div class="page-intro"><div><span class="eyebrow">COOPERATION. TRUST. SURVIVAL.</span><h1>${game?.phase === 'FINISHED' ? '航程结束，故事留下。' : '欢迎来到孤岛。'}</h1><p>${game ? '财富有限，选择自由。你愿意把信任交给谁？' : '八天，四名幸存者。合作的收益，未必公平地属于每个人。'}</p></div><div class="day-progress"><div><span>生存日程</span><b>${String(day).padStart(2,'0')}<small>/ 08</small></b></div><div class="day-dots">${Array.from({ length: 8 },(_,i) => `<span class="${i + 1 === day ? 'current' : i + 1 < day ? 'done' : ''}">${i + 1}</span>`).join('')}</div></div></div>${phaseGuide()}<section class="roles" aria-label="幸存者资产">${roleCards()}</section><div class="game-grid"><div class="board"><section class="mission-area"><div class="section-heading"><h2>${icon('compass',20)}今日岛屿任务</h2><span class="phase-tag">${game ? labels[game.phase] : '等待登陆'}</span></div>${islandMap()}<div class="tasks">${taskCards()}</div></section>${phaseAction()}${results()}<footer class="board-footer"><span>合作创造财富，信任决定赢家。</span><span>ISLAND PROTOCOL · V0.1</span></footer></div>${chatPanel()}</div></main>`;
-  const mount = $('#scene-mount');
-  if (previousScene && previousScene.dataset.sceneKey === (game?.id || 'preview')) mount.replaceWith(previousScene);
-  else mount.outerHTML = islandMarkup();
+  const nextTree = document.createElement('template');
+  nextTree.innerHTML = `<header class="topbar"><a class="brand" href="/">${icon('compass',34)}<span><b>孤岛协议</b><small>ISLAND PROTOCOL</small></span></a><div class="topbar-right"><span class="connection"><i class="${config.configured ? '' : 'offline'}"></i>${config.configured ? '模型网关已配置' : '模型网关未配置'}</span><button class="text-button" data-action="rules">游戏规则</button>${game ? '<button class="outline-button" data-action="new">新航程 ' + icon('arrow',14) + '</button>' : ''}</div></header><main><div class="page-intro"><div><span class="eyebrow">COOPERATION. TRUST. SURVIVAL.</span><h1>${game?.phase === 'FINISHED' ? '航程结束，故事留下。' : '欢迎来到孤岛。'}</h1><p>${game ? '财富有限，选择自由。你愿意把信任交给谁？' : '八天，四名幸存者。合作的收益，未必公平地属于每个人。'}</p></div><div class="day-progress"><div><span>生存日程</span><b>${String(day).padStart(2,'0')}<small>/ 08</small></b></div><div class="day-dots">${Array.from({ length: 8 },(_,i) => `<span class="${i + 1 === day ? 'current' : i + 1 < day ? 'done' : ''}">${i + 1}</span>`).join('')}</div></div></div>${phaseGuide()}<section class="roles" aria-label="幸存者资产">${roleCards()}</section><div class="game-grid"><div class="board"><section class="mission-area"><div class="section-heading"><h2>${icon('compass',20)}今日岛屿任务</h2><span class="phase-tag">${game ? labels[game.phase] : '等待登陆'}</span></div>${islandMap()}<div class="tasks">${taskCards()}</div></section>${phaseAction()}${results()}<footer class="board-footer"><span>合作创造财富，信任决定赢家。</span><span>ISLAND PROTOCOL · V0.1</span></footer></div>${chatPanel()}</div></main>`;
+  if (!previousScene) root.replaceChildren(nextTree.content);
+  else {
+    // Keep the scene and all its ancestors connected so CSS motion survives polling.
+    for (const selector of ['.topbar','.page-intro','.roles','.mission-area > .section-heading','.tasks','.chat-panel']) {
+      root.querySelector(selector).replaceWith(nextTree.content.querySelector(selector));
+    }
+    const nextGuide = nextTree.content.querySelector('.phase-guide');
+    const guide = root.querySelector('.phase-guide');
+    if (guide && nextGuide) guide.replaceWith(nextGuide);
+    else if (nextGuide) root.querySelector('.roles').before(nextGuide);
+    else guide?.remove();
+    const board = root.querySelector('.board');
+    for (const child of [...board.children]) if (!child.classList.contains('mission-area')) child.remove();
+    for (const child of [...nextTree.content.querySelector('.board').children]) {
+      if (!child.classList.contains('mission-area')) board.append(child);
+    }
+  }
+  if (!previousScene) $('#scene-mount').outerHTML = islandMarkup();
+  else if (previousScene.dataset.sceneKey !== (game?.id || 'preview')) previousScene.outerHTML = islandMarkup();
   updateIslandScene($('#island-scene'), game);
   if (focused) {
     const next = [...document.querySelectorAll('[data-draft]')].find(el => el.dataset.draft === focused && (el.type !== 'radio' || el.value === focusedValue));
@@ -258,7 +277,7 @@ root.addEventListener('click', event => {
   else if (kind === 'reconsider') action({ type: 'reconsider_registrations' });
   else if (kind === 'next') action({ type: 'next_day' });
   else if (kind === 'rules') $('#rules-dialog').showModal();
-  else if (kind === 'focus-public') { channel = 'public'; render(); $('#chat-input').focus(); $('#chat-input').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  else if (kind === 'focus-public') { channel = 'public'; render(); $('#chat-input').focus(); $('#chat-input').scrollIntoView({ behavior: motionBehavior(), block: 'center' }); }
 });
 root.addEventListener('submit', event => {
   event.preventDefault();
