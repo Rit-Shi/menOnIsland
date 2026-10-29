@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node.js 22 built-ins, native fetch, node:test, HTML/CSS/JavaScript; no runtime package dependencies.
 
-**Spec:** `doc/playmode/核心玩法v3p6.md`, including confirmed random-start cyclic negotiation and fresh speeches/ballots after each elimination. Read `doc/personas/人设设计v2.md` for the first three MVP characters, 林舟、沈默、顾寒. `writing-block.md` retains the supplied design copy.
+**Spec:** `writing-block.md`, including confirmed random-start cyclic negotiation and fresh speeches/ballots after each elimination. This is the sole design baseline; use its three MVP roles 林舟、沈默、顾寒. The remote's previous two design documents have been removed at the user's request.
 
 ## Global Constraints
 

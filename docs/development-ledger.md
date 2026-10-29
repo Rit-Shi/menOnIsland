@@ -20,3 +20,10 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - Local main tracks origin/main; development uses codex/island-mvp.
 - Applied the confirmed negotiation/voting amendments to the repository's existing gameplay document; retained the supplied root design copy.
 - Gameplay implementation remains pending while repository setup is handled.
+
+## Development resumed
+
+- User explicitly requested deletion of both remote design files and development from the discussed writing-block.md only.
+- Removed doc/personas/人设设计v2.md and doc/playmode/核心玩法v3p6.md; retained README.md.
+- Supersedes the previous remote-document baseline: writing-block.md is the only design authority.
+- Model mapping supplied by user: P1 deepseek-v4.1-flash; P2 deepseek-v4.0-flash; P3 glm-5.2, via the supplied Chat Completions gateway.
