@@ -43,6 +43,31 @@ test('invalid or unavailable model yields legal fallbacks without leaking its re
   assert.equal(decision.code, 'missing_credentials');
 });
 
+test('agent can invest its entire integer balance but cannot overspend or submit fractions', async t => {
+  let amount = 13;
+  let context;
+  const gateway = createServer(async (req, res) => {
+    let body = ''; for await (const chunk of req) body += chunk;
+    context = JSON.parse(JSON.parse(body).messages[1].content);
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ amount }) } }] }));
+  });
+  await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => gateway.close(resolve)));
+  const game = createGame({ id: 'whole-coins', randomInt: () => 1 });
+  game.players[1].gold = 13;
+  const config = { baseUrl: `http://127.0.0.1:${gateway.address().port}/v1`, apiKey: 'test-key', models: { P1: 'test-model' }, timeoutMs: 1000 };
+  const result = await requestDecision(config, getObservation(game, 'P1'), 'invest');
+  assert.equal(result.fallback, false);
+  assert.deepEqual(result.action, { type: 'invest', amount: 13 });
+  assert.equal(context.players[1].gold, 13);
+  for (amount of [14, 1.5]) {
+    const rejected = await requestDecision(config, getObservation(game, 'P1'), 'invest');
+    assert.equal(rejected.fallback, true);
+    assert.equal(rejected.code, 'invalid_action');
+  }
+});
+
 test('loads model mapping and keeps secrets out of public config', () => {
   const config = loadConfig({ env: { AI_API_KEY: 'test-secret', AI_BASE_URL: 'https://example.com/v1', MODEL_P1: 'one', MODEL_P2: 'two', MODEL_P3: 'three' }, envPath: null });
   assert.equal(config.models.P3, 'three');

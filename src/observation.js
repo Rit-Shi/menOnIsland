@@ -9,14 +9,14 @@ export function getObservation(game, viewerId) {
     registration_status: result.registration_status,
     task_statuses: Object.fromEntries(Object.entries(result.settlements).map(([id, s]) => [id, { success: s.success, member_ids: s.member_ids }])),
     my_settlement: Object.values(result.settlements).find(s => s.member_ids.includes(viewerId)) ?? null,
-    my_net_change_units: result.net_changes_units[viewerId],
+    my_net_change: result.net_changes[viewerId],
     vote_results: result.vote_results,
   }));
   const session = game.vote_session;
   const view = {
-    id: game.id, version: game.version, current_day: game.current_day, max_days: game.max_days, phase: game.phase,
+    id: game.id, schema_version: game.schema_version, version: game.version, current_day: game.current_day, max_days: game.max_days, phase: game.phase,
     viewer_id: viewerId,
-    players: game.players.map(p => ({ id: p.id, name: p.name, is_human: p.is_human, gold_units: p.gold_units, ...(p.id === viewerId ? { statistics: p.statistics } : {}) })),
+    players: game.players.map(p => ({ id: p.id, name: p.name, is_human: p.is_human, gold: p.gold, ...(p.id === viewerId ? { statistics: p.statistics } : {}) })),
     tasks: TASKS, registrations: game.registrations, registration_status: game.registration_status,
     registration_reviews_remaining: 2 - (game.registration_reviews ?? 0),
     registration_review_pending: IDS.slice(1).some(id => !Object.hasOwn(game.registrations, id) || (game.agent_registration_revision?.[id] ?? 0) < (game.registration_revision ?? 0)),

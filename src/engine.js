@@ -21,9 +21,9 @@ export function createGame({ id, randomInt = secureRandomInt } = {}) {
   const names = ['玩家', '林舟', '沈默', '顾寒'];
   const personalities = ['Human', '温和的合作型，组织公平出资、珍惜信誉，也会在风险过高时选择 A。', '谨慎的计算型，比较收益、成功概率和最终名次，避免独自承担成本。', '机会主义型，在有利时合作，争取较低投入和较高名次，可以提出不兑现的承诺。'];
   const game = {
-    id, version: 0, current_day: 1, max_days: 8, phase: 'NEGOTIATION',
+    id, schema_version: 2, version: 0, current_day: 1, max_days: 8, phase: 'NEGOTIATION',
     created_at: new Date().toISOString(),
-    players: IDS.map((id, i) => ({ id, name: names[i], is_human: i === 0, gold_units: 120, personality: personalities[i], statistics: { success: 0, failure: 0, eliminated: 0 } })),
+    players: IDS.map((id, i) => ({ id, name: names[i], is_human: i === 0, gold: 10, personality: personalities[i], statistics: { success: 0, failure: 0, eliminated: 0 } })),
     messages: [], promises: [], vote_results: [], round_results: [], ranking: [],
     memories: Object.fromEntries(IDS.map(id => [id, { facts: [], trust: Object.fromEntries(IDS.filter(other => other !== id).map(other => [other, 0])) }])),
     diagnostics: [], thinking: [],
@@ -45,7 +45,7 @@ function startDay(game, randomInt) {
   game.vote_session = null;
   game.vote_queue = [];
   game.phase = 'NEGOTIATION';
-  game.day_start_balances = Object.fromEntries(game.players.map(p => [p.id, p.gold_units]));
+  game.day_start_balances = Object.fromEntries(game.players.map(p => [p.id, p.gold]));
   addMessage(game, 'SYSTEM', `第 ${game.current_day} 天开始。公共协商从${player(game, game.negotiation_order[0]).name}开始，依次发言。`);
 }
 export function addMessage(game, from, text, to = null, kind = 'chat') {
@@ -108,7 +108,7 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt) 
       requireRule(currentSpeaker(game) === actorId, '尚未轮到该角色发言');
       const message = validateMessage(action.message);
       if (action.promise != null) {
-        requireRule(['B', 'C'].includes(action.promise.task_id) && Number.isSafeInteger(action.promise.amount) && action.promise.amount >= 0 && action.promise.amount <= Math.floor(player(game, actorId).gold_units / 12), '承诺必须是余额内的非负整数');
+        requireRule(['B', 'C'].includes(action.promise.task_id) && Number.isSafeInteger(action.promise.amount) && action.promise.amount >= 0 && action.promise.amount <= player(game, actorId).gold, '承诺必须是余额内的非负整数');
       }
       addMessage(game, actorId, message, null, game.phase === 'VOTE_SPEECH' ? 'vote_speech' : 'negotiation');
       if (action.promise) game.promises.push({ day: game.current_day, actor_id: actorId, task_id: action.promise.task_id, amount: action.promise.amount, message_id: game.messages.at(-1).id });
@@ -175,7 +175,7 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt) 
       const taskId = Object.keys(game.active_teams).find(id => game.active_teams[id].includes(actorId));
       requireRule(taskId, '只有正式任务成员可以投入');
       requireRule(Number.isSafeInteger(action.amount) && action.amount >= 0, '投入必须为非负整数');
-      requireRule(action.amount * 12 <= player(game, actorId).gold_units, '投入超过当前余额');
+      requireRule(action.amount <= player(game, actorId).gold, '投入超过当前余额');
       requireRule(!owns(game.investments, actorId), '不能重复提交投入');
       game.investments[actorId] = action.amount;
       if (Object.values(game.active_teams).flat().every(id => owns(game.investments, id))) settleRound(game);
@@ -209,6 +209,21 @@ function updateMemories(game, settlements) {
     memory.facts = memory.facts.slice(-16);
   }
 }
+export function calculateSettlement(taskId, memberIds, investments) {
+  const task = TASKS[taskId];
+  const total = memberIds.reduce((sum, id) => sum + investments[id], 0);
+  const success = total >= task.threshold;
+  const reward = success ? Math.ceil(total * task.multiplier / memberIds.length) : 0;
+  return {
+    task_id: taskId, member_ids: [...memberIds], investments: { ...investments },
+    total_investment: total, success, reward_multiplier: task.multiplier,
+    reward_pool: reward * memberIds.length, reward_per_player: reward,
+    net_changes: Object.fromEntries(memberIds.map(id => [id, reward - investments[id]])),
+  };
+}
+export function rankPlayers(players) {
+  return [...players].sort((a, b) => b.gold - a.gold).map((p, i, list) => ({ id: p.id, name: p.name, gold: p.gold, rank: list.findIndex(other => other.gold === p.gold) + 1 }));
+}
 export function settleRound(game) {
   if (game.round_results.some(result => result.day === game.current_day)) return game;
   requireRule(game.phase === 'INVESTMENT_SUBMISSION', '当前阶段不能结算');
@@ -216,27 +231,23 @@ export function settleRound(game) {
   const settlements = {};
   for (const [taskId, memberIds] of Object.entries(game.active_teams)) {
     const investments = Object.fromEntries(memberIds.map(id => [id, game.investments[id]]));
-    const total = Object.values(investments).reduce((a, b) => a + b, 0);
-    const success = total >= TASKS[taskId].threshold;
-    const rewardUnits = success ? total * (taskId === 'B' ? 9 : 8) : 0;
-    const netChanges = {};
+    const settlement = calculateSettlement(taskId, memberIds, investments);
     for (const id of memberIds) {
-      netChanges[id] = rewardUnits - investments[id] * 12;
-      player(game, id).gold_units += netChanges[id];
-      player(game, id).statistics[success ? 'success' : 'failure']++;
+      player(game, id).gold += settlement.net_changes[id];
+      player(game, id).statistics[settlement.success ? 'success' : 'failure']++;
     }
-    settlements[taskId] = { task_id: taskId, member_ids: memberIds, investments, total_investment: total, success, reward_multiplier: TASKS[taskId].multiplier, reward_pool_units: rewardUnits * memberIds.length, reward_per_player_units: rewardUnits, net_changes_units: netChanges };
+    settlements[taskId] = settlement;
   }
   for (const id of IDS.filter(id => game.registrations[id] === 'A')) {
-    player(game, id).gold_units += 24;
+    player(game, id).gold += 2;
     player(game, id).statistics.success++;
   }
   updateMemories(game, settlements);
-  const balances = Object.fromEntries(game.players.map(p => [p.id, p.gold_units]));
-  game.round_results.push({ day: game.current_day, public_gold_balances: balances, registrations: { ...game.registrations }, registration_status: { ...game.registration_status }, settlements, vote_results: game.vote_results.filter(v => v.day === game.current_day), net_changes_units: Object.fromEntries(IDS.map(id => [id, balances[id] - game.day_start_balances[id]])) });
+  const balances = Object.fromEntries(game.players.map(p => [p.id, p.gold]));
+  game.round_results.push({ day: game.current_day, public_gold_balances: balances, registrations: { ...game.registrations }, registration_status: { ...game.registration_status }, settlements, vote_results: game.vote_results.filter(v => v.day === game.current_day), net_changes: Object.fromEntries(IDS.map(id => [id, balances[id] - game.day_start_balances[id]])) });
   game.phase = game.current_day === game.max_days ? 'FINISHED' : 'ROUND_UPDATE';
   if (game.phase === 'FINISHED') {
-    game.ranking = [...game.players].sort((a, b) => b.gold_units - a.gold_units).map((p, i, list) => ({ id: p.id, name: p.name, gold_units: p.gold_units, rank: list.findIndex(other => other.gold_units === p.gold_units) + 1 }));
+    game.ranking = rankPlayers(game.players);
   }
   addMessage(game, 'SYSTEM', `第 ${game.current_day} 天结算完成。详细投入仅对正式队员开放。`, null, 'settlement');
   return game;

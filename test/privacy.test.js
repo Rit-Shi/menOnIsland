@@ -41,7 +41,8 @@ test('settlement details are filtered from current view, histories and memories'
   assert.equal(outsider.round_results[0].my_settlement, null);
   assert.ok(!JSON.stringify(outsider).includes('"investments"'));
   assert.equal(outsider.memories.P1, undefined);
-  assert.ok(outsider.players.every(p => p.gold_units !== undefined));
+  assert.deepEqual(outsider.players.map(p => p.gold), [10, 16, 12, 12]);
+  assert.equal(outsider.round_results[0].my_net_change, 2);
 });
 
 test('unrevealed ballots are never included in a different candidate observation', () => {

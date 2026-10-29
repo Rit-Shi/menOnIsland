@@ -53,7 +53,7 @@ test('eight-day API playthrough survives refresh and persists exact balances', a
     await f.request('/api/action', { action: { type: 'register', task_id: 'A' } });
     await f.request('/api/action', { action: { type: 'lock_registration' } });
     const state = (await f.request('/api/state')).data;
-    assert.equal(state.players[0].gold_units, 120 + day * 24);
+    assert.equal(state.players[0].gold, 10 + day * 2);
     const duplicate = await f.request('/api/action', { action: { type: 'lock_registration' } });
     assert.equal(duplicate.status, 409);
     if (day < 8) await f.request('/api/action', { action: { type: 'next_day' } });
@@ -62,7 +62,7 @@ test('eight-day API playthrough survives refresh and persists exact balances', a
   assert.equal(final.phase, 'FINISHED');
   assert.equal(final.round_results.length, 8);
   const saved = await f.app.store.load(final.id);
-  assert.equal(saved.players[0].gold_units, 312);
+  assert.equal(saved.players[0].gold, 26);
   assert.equal(final.session_hash, undefined);
   assert.equal(final.players[1].personality, undefined);
 });
@@ -121,7 +121,7 @@ test('oversubscribed B completes two vote rounds and hides pending agent investm
   const final = await f.waitFor('ROUND_UPDATE');
   assert.equal(final.phase, 'ROUND_UPDATE');
   assert.equal(final.vote_results.length, 2);
-  assert.deepEqual(final.players.map(p => p.gold_units), [150, 150, 120, 120]);
+  assert.deepEqual(final.players.map(p => p.gold), [13, 13, 10, 10]);
   assert.ok(observations.filter(o => o.kind === 'invest').every(o => o.observation.my_investment === null && !('investments' in o.observation)));
 });
 
