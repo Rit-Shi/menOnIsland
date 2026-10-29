@@ -6,6 +6,7 @@ import { getObservation, getHumanView } from '../src/observation.js';
 const ids = ['P0', 'P1', 'P2', 'P3'];
 function openRegistration(game = createGame({ id: 'secret-registration', randomInt: () => 0 })) {
   [...game.negotiation_order].forEach(id => applyAction(game, id, { type: 'speech', message: '公开协商' }));
+  applyAction(game, 'P0', { type: 'start_private_chat' });
   advanceTime(game, () => game.private_chat.ends_at);
   return game;
 }

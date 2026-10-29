@@ -7,6 +7,7 @@ const ids = ['P0', 'P1', 'P2', 'P3'];
 function atInvestment() {
   const game = createGame({ id: 'privacy', randomInt: () => 0 });
   ids.forEach(id => applyAction(game, id, { type: 'speech', message: '公共信息' }));
+  applyAction(game, 'P0', { type: 'start_private_chat' });
   advanceTime(game, () => game.private_chat.ends_at);
   ids.forEach((id, i) => applyAction(game, id, { type: 'register', task_id: i < 2 ? 'B' : 'A' }));
   applyAction(game, 'P0', { type: 'lock_registration' });
@@ -16,6 +17,7 @@ function atInvestment() {
 test('private chat is visible to its participants only, even in agent contexts', () => {
   const game = createGame({ id: 'privacy', randomInt: () => 0 });
   ids.forEach(id => applyAction(game, id, { type: 'speech', message: '公共信息' }));
+  applyAction(game, 'P0', { type: 'start_private_chat' });
   applyAction(game, 'P1', { type: 'private_message', to: 'P2', message: '私聊暗号-不准泄漏' });
   assert.ok(JSON.stringify(getObservation(game, 'P1')).includes('私聊暗号'));
   assert.ok(JSON.stringify(getObservation(game, 'P2')).includes('私聊暗号'));
@@ -50,6 +52,7 @@ test('settlement details are filtered from current view, histories and memories'
 test('unrevealed ballots are never included in a different candidate observation', () => {
   const game = createGame({ id: 'votes', randomInt: () => 0 });
   ids.forEach(id => applyAction(game, id, { type: 'speech', message: '公共信息' }));
+  applyAction(game, 'P0', { type: 'start_private_chat' });
   advanceTime(game, () => game.private_chat.ends_at);
   ids.forEach(id => applyAction(game, id, { type: 'register', task_id: 'C' }));
   applyAction(game, 'P0', { type: 'lock_registration' });

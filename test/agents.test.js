@@ -24,6 +24,7 @@ test('gateway uses the chosen agent model and only its filtered observation', as
   t.after(() => new Promise(resolve => gateway.close(resolve)));
   const game = createGame({ id: 'model', randomInt: () => 1 });
   [...game.negotiation_order].forEach(id => applyAction(game, id, { type: 'speech', message: '公开协商' }));
+  applyAction(game, 'P0', { type: 'start_private_chat' });
   applyAction(game, 'P2', { type: 'private_message', to: 'P3', message: '不能出现在林舟上下文里' });
   const config = { baseUrl: `http://127.0.0.1:${gateway.address().port}/v1`, apiKey: 'test-only-key', models: { P1: 'model-one' }, timeoutMs: 1000 };
   const decision = await requestDecision(config, getObservation(game, 'P1'), 'speech');
@@ -48,6 +49,7 @@ test('private model call sends one addressed message or passes without exposing 
   t.after(() => new Promise(resolve => gateway.close(resolve)));
   const game = createGame({ id: 'private-adapter', randomInt: () => 0 });
   [...game.negotiation_order].forEach(id => applyAction(game, id, { type: 'speech', message: '协商' }));
+  applyAction(game, 'P0', { type: 'start_private_chat' });
   applyAction(game, 'P2', { type: 'private_message', to: 'P3', message: '其他人的秘密' });
   const config = { baseUrl: `http://127.0.0.1:${gateway.address().port}/v1`, apiKey: 'test-key', models: { P1: 'one' }, timeoutMs: 1000 };
   let result = await requestDecision(config, getObservation(game, 'P1'), 'private_chat');
@@ -119,6 +121,7 @@ test('every Agent action request presents four Agents without human controller m
   t.after(() => new Promise(resolve => gateway.close(resolve)));
   const game = createGame({ id: 'agent-identities', randomInt: () => 0 });
   [...game.negotiation_order].forEach(id => applyAction(game, id, { type: 'speech', message: '一起商量任务。' }));
+  applyAction(game, 'P0', { type: 'start_private_chat' });
   addMessage(game, 'SYSTEM', '玩家邀请三名 Agent 重新评估报名。');
   game.vote_session = { candidate_ids: ['P0', 'P1', 'P2', 'P3'], votes: {} };
   const config = { baseUrl: `http://127.0.0.1:${gateway.address().port}/v1`, apiKey: 'test-key', models: { P1: 'one', P2: 'two', P3: 'three' }, timeoutMs: 1000 };

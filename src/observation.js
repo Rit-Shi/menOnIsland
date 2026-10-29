@@ -21,6 +21,7 @@ export function getObservation(game, viewerId, now = Date.now) {
   const session = game.vote_session;
   const view = {
     id: game.id, schema_version: game.schema_version, version: game.version, current_day: game.current_day, max_days: game.max_days, phase: game.phase,
+    ...(!agentView ? { phase_events: (game.phase_events || []).map(event => Object.fromEntries(['id','day','from','to','task_id','vote_round','next_vote_round'].filter(key => Object.hasOwn(event,key)).map(key => [key,event[key]]))) } : {}),
     viewer_id: viewerId,
     players: game.players.map(p => ({ id: p.id, name: nameFor(p), ...(!agentView ? { is_human: p.is_human } : {}), gold: p.gold, ...(p.id === viewerId ? { statistics: p.statistics } : {}) })),
     tasks: TASKS,

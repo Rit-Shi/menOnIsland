@@ -21,6 +21,7 @@ async function fixture(t, decision) {
   const now = () => time;
   const game = createGame({ id: 'runner', randomInt: () => 0 });
   ids.forEach(id => applyAction(game, id, { type: 'speech', message: '已公开发言' }, () => 0, now));
+  applyAction(game, 'P0', { type: 'start_private_chat' }, () => 0, now);
   await store.save(game);
   const config = { models: { P1: 'one', P2: 'two', P3: 'three' }, timeoutMs: 60000 };
   const runner = createRunner({ store, config, now, decision });
@@ -160,6 +161,7 @@ test('a slow expired save does not delay recovery or deadline timers of another 
   });
   const second = createGame({ id: 'second', randomInt: () => 0 });
   ids.forEach(id => applyAction(second, id, { type: 'speech', message: '第二局协商' }, () => 0, () => 40000));
+  applyAction(second, 'P0', { type: 'start_private_chat' }, () => 0, () => 40000);
   await f.store.save(second);
   f.setTime(50000);
   const recovery = f.runner.resume();

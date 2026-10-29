@@ -7,6 +7,7 @@ const ids = ['P0', 'P1', 'P2', 'P3'];
 function privateGame() {
   const game = engine.createGame({ id: 'chat', randomInt: () => 0 });
   for (const id of ids) engine.applyAction(game, id, { type: 'speech', message: '公开协商' }, () => 0, () => 1000);
+  engine.applyAction(game, 'P0', { type: 'start_private_chat' }, () => 0, () => 1000);
   return game;
 }
 
@@ -40,6 +41,7 @@ test('private chat is closed during public speech and after the deadline', () =>
   const game = engine.createGame({ id: 'closed', randomInt: () => 0 });
   assert.throws(() => engine.applyAction(game, 'P0', { type: 'private_message', to: 'P1', message: '提前' }), /私聊/);
   for (const id of ids) engine.applyAction(game, id, { type: 'speech', message: '公开' }, () => 0, () => 1000);
+  engine.applyAction(game, 'P0', { type: 'start_private_chat' }, () => 0, () => 1000);
   assert.throws(() => engine.applyAction(game, 'P0', { type: 'private_message', to: 'P1', message: '过期' }, () => 0, () => 31000), /结束|私聊/);
   engine.advanceTime(game, () => 31000);
   assert.throws(() => engine.applyAction(game, 'P1', { type: 'private_message', to: 'P0', message: '报名时夹带' }), /私聊/);

@@ -19,6 +19,7 @@ test('only a unique highest balance wins, while numerical ties retain shared ran
 function registered(choices) {
   const game = createGame({ id: 'test', randomInt: fixed });
   for (const id of game.negotiation_order) applyAction(game, id, { type: 'speech', message: '一起商量' }, fixed);
+  applyAction(game, 'P0', { type: 'start_private_chat' });
   advanceTime(game, () => game.private_chat.ends_at);
   choices.forEach((task_id, i) => applyAction(game, ids[i], { type: 'register', task_id }, fixed));
   applyAction(game, 'P0', { type: 'lock_registration' }, fixed);
@@ -117,6 +118,7 @@ test('eight days finish with exact shared ranks and no ninth day', () => {
   const game = createGame({ id: 'eight', randomInt: fixed });
   for (let day = 1; day <= 8; day++) {
     [...game.negotiation_order].forEach(id => applyAction(game, id, { type: 'speech', message: '喝水' }, fixed));
+    applyAction(game, 'P0', { type: 'start_private_chat' });
     advanceTime(game, () => game.private_chat.ends_at);
     ids.forEach(id => applyAction(game, id, { type: 'register', task_id: 'A' }, fixed));
     applyAction(game, 'P0', { type: 'lock_registration' }, fixed);
@@ -131,6 +133,7 @@ test('eight days finish with exact shared ranks and no ninth day', () => {
 test('registration reconsideration is bounded and all agents must finish before lock', () => {
   const game = createGame({ id: 'revise', randomInt: fixed });
   ids.forEach(id => applyAction(game, id, { type: 'speech', message: '先看看' }));
+  applyAction(game, 'P0', { type: 'start_private_chat' });
   advanceTime(game, () => game.private_chat.ends_at);
   ids.forEach(id => applyAction(game, id, { type: 'register', task_id: 'B' }));
   for (let round = 0; round < 2; round++) {

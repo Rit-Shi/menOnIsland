@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createApp } from '../server.js';
 import { loadConfig } from '../src/config.js';
 import { request as httpRequest } from 'node:http';
+import { flushModelLogs } from '../src/model-log.js';
 
 async function fixture(t, decision) {
   let time = 1000;
@@ -27,6 +28,7 @@ async function fixture(t, decision) {
   async function waitFor(phase) {
     for (let i = 0; i < 200; i++) {
       const response = await request('/api/state');
+      if (['REGISTRATION','PRIVATE_CHAT'].includes(phase) && response.data.phase === 'PRIVATE_CHAT_READY') await request('/api/action', { action: { type: 'start_private_chat' } });
       if (phase === 'REGISTRATION' && response.data.phase === 'PRIVATE_CHAT') time = response.data.private_chat.ends_at;
       const registered = phase !== 'REGISTRATION' || ['P1', 'P2', 'P3'].every(id => response.data.registration_submitted[id]);
       if (response.data.phase === phase && !response.data.thinking.length && registered) return response.data;
@@ -34,7 +36,7 @@ async function fixture(t, decision) {
     }
     throw new Error(`Timed out waiting for ${phase}`);
   }
-  t.after(async () => { await app.idle(); await new Promise(resolve => app.server.close(resolve)); await rm(dir, { recursive: true, force: true }); });
+  t.after(async () => { await app.idle(); await new Promise(resolve => app.server.close(resolve)); await flushModelLogs(); await rm(dir, { recursive: true, force: true }); });
   return { app, config, request, waitFor, base, getCookie: () => cookie, now, setTime: value => { time = value; } };
 }
 
@@ -45,6 +47,27 @@ test('session is required and clients cannot impersonate agents', async t => {
   const result = await f.request('/api/action', { actor_id: 'P1', action: { type: 'speech', message: '冒充AI' } });
   assert.equal(result.status, 403);
   assert.equal((await f.request('/api/action', { action: { type: 'speech', message: '你好' } }, { Origin: 'https://evil.example' })).status, 403);
+});
+
+test('private API stays paused before the player starts and duplicate requests do not extend its timer', async t => {
+  let privateCalls=0;
+  const f=await fixture(t,async (_config,_view,kind)=>{
+    if(kind==='private_chat')privateCalls++;
+    return {action:kind==='speech'?{type:'speech',message:'公共协商'}:{type:'private_pass'},fallback:false};
+  });
+  await f.request('/api/games',{});
+  await f.request('/api/action',{action:{type:'speech',message:'公开发言'}});
+  const ready=await f.waitFor('PRIVATE_CHAT_READY');
+  assert.equal(ready.private_chat,null);
+  await f.app.idle();assert.equal(privateCalls,0);
+  f.setTime(900000);
+  const body={request_id:'private-start-once',action:{type:'start_private_chat'}};
+  const started=await f.request('/api/action',body);
+  assert.equal(started.status,200);assert.equal(started.data.private_chat.ends_at,930000);
+  f.setTime(910000);
+  assert.equal((await f.request('/api/action',body)).data.private_chat.ends_at,930000);
+  assert.equal((await f.request('/api/action',{action:{type:'start_private_chat'}})).status,409);
+  assert.equal((await f.request('/api/state')).data.private_chat.ends_at,930000);
 });
 
 test('eight-day API playthrough survives refresh and persists exact balances', async t => {

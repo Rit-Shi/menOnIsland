@@ -23,6 +23,7 @@ async function fixture(t, respond) {
   t.after(async () => { gateway.closeAllConnections(); await new Promise(resolve => gateway.close(resolve)); await flushModelLogs(); await rm(directory, { recursive: true, force: true }); });
   const game = createGame({ id: 'model-trace', randomInt: () => 0 });
   for (const id of game.negotiation_order) applyAction(game, id, { type: 'speech', message: '公开协商' });
+  applyAction(game, 'P0', { type: 'start_private_chat' });
   advanceTime(game, () => game.private_chat.ends_at);
   const config = { baseUrl: `http://127.0.0.1:${gateway.address().port}/v1`, apiKey: 'private-test-credential', models: { P1: 'one', P2: 'two', P3: 'three' }, timeoutMs: 1000, dataDir: directory };
   const logs = async () => { await flushModelLogs(); return (await readFile(join(directory, 'model-calls', 'model-trace.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line)); };
@@ -402,7 +403,11 @@ test('blocked submission logs cannot delay opening and expiring the private phas
     return { action: { type: 'register', task_id: 'A' }, fallback: false };
   } });
   t.after(() => runner.close());
-  const pending = (async () => { await runner.kick(game.id); await runner.idle(); })();
+  const pending = (async () => {
+    await runner.kick(game.id); await runner.idle();
+    await store.transact(game.id, current => applyAction(current, 'P0', { type: 'start_private_chat' }, () => 0, () => time));
+    await runner.kick(game.id); await runner.idle();
+  })();
   let response;
   try { response = await Promise.race([pending.then(() => 'complete'), new Promise(resolve => setTimeout(() => resolve('blocked'), 150))]); }
   finally { release(); }

@@ -43,10 +43,10 @@
 
 **Interfaces:** PRIVATE_CHAT_READY + action {type:'start_private_chat'}. game.phase_events contains sanitized {id,day,from,to,vote_round?,task_id?}; human observation includes it, Agent observation does not. The existing private scheduler starts only for PRIVATE_CHAT.
 
-- [ ] RED tests: fourth public speech waits without a timer; before-click/restart no private request; only P0 can start, exact 30 seconds from click, repeated start rejected and deadline unchanged.
-- [ ] RED tests: public event sequence includes immediate investment→settlement, vote rounds, ready/private transitions; private traffic and hidden progress produce no events.
-- [ ] Implement phase transition helper and waiting action; update existing fixtures to explicitly start private chat. Do not extend already active saves.
-- [ ] GREEN full npm test; commit this completed part.
+- [x] RED tests: fourth public speech waits without a timer; before-click/restart no private request; only P0 can start, exact 30 seconds from click, repeated start rejected and deadline unchanged.
+- [x] RED tests: public event sequence includes immediate investment→settlement, vote rounds, ready/private transitions; private traffic and hidden progress produce no events.
+- [x] Implement phase transition helper and waiting action; update existing fixtures to explicitly start private chat. Do not extend already active saves.
+- [x] GREEN full npm test; commit this completed part.
 
 ### Task 3: Waiting UI and animated transition notices
 

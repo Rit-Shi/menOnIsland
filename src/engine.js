@@ -19,6 +19,14 @@ export function currentSpeaker(game) {
   if (game.phase === 'VOTE_SPEECH') return game.vote_session.candidate_ids[game.vote_session.speech_index] ?? null;
   return null;
 }
+function setPhase(game, phase, detail = {}) {
+  const from = game.phase;
+  if (from === phase) return;
+  game.phase = phase;
+  const vote = game.vote_session;
+  const event = { id: randomUUID(), day: game.current_day, from, to: phase, ...(vote ? { task_id: vote.task_id, vote_round: vote.vote_round } : {}), ...detail };
+  game.phase_events = [...(game.phase_events || []), event].slice(-128);
+}
 export function createGame({ id, randomInt = secureRandomInt } = {}) {
   const names = ['玩家', '林舟', '沈默', '顾寒'];
   const personalities = ['Human', '温和的合作型，组织公平出资、珍惜信誉，也会在风险过高时选择 A。', '谨慎的计算型，比较收益、成功概率和最终名次，避免独自承担成本。', '机会主义型，在有利时合作，争取较低投入和较高名次，可以提出不兑现的承诺。'];
@@ -26,7 +34,7 @@ export function createGame({ id, randomInt = secureRandomInt } = {}) {
     id, schema_version: 2, version: 0, current_day: 1, max_days: 8, phase: 'NEGOTIATION',
     created_at: new Date().toISOString(),
     players: IDS.map((id, i) => ({ id, name: names[i], is_human: i === 0, gold: 10, personality: personalities[i], statistics: { success: 0, failure: 0, eliminated: 0 } })),
-    messages: [], promises: [], vote_results: [], round_results: [], ranking: [],
+    messages: [], promises: [], vote_results: [], round_results: [], ranking: [], phase_events: [],
     memories: Object.fromEntries(IDS.map(id => [id, { facts: [], trust: Object.fromEntries(IDS.filter(other => other !== id).map(other => [other, 0])) }])),
     diagnostics: [], thinking: [],
   };
@@ -46,7 +54,7 @@ function startDay(game, randomInt) {
   game.investments = {};
   game.vote_session = null;
   game.vote_queue = [];
-  game.phase = 'NEGOTIATION';
+  setPhase(game, 'NEGOTIATION');
   game.private_chat = null;
   game.day_start_balances = Object.fromEntries(game.players.map(p => [p.id, p.gold]));
   addMessage(game, 'SYSTEM', `第 ${game.current_day} 天开始。公共协商从${player(game, game.negotiation_order[0]).name}开始，依次发言。`);
@@ -61,8 +69,8 @@ function validateMessage(value, allowBlank = false) {
   return value.trim();
 }
 function startVote(game, taskId, candidates, round = 1) {
+  setPhase(game, 'VOTE_SPEECH', { task_id: taskId, next_vote_round: round });
   game.vote_session = { task_id: taskId, candidate_ids: [...candidates], vote_round: round, speech_index: 0, votes: {} };
-  game.phase = 'VOTE_SPEECH';
   addMessage(game, 'SYSTEM', `${TASKS[taskId].name}超员，开始第 ${round} 轮淘汰。候选人重新发言后秘密投票。`);
 }
 function beginTeamPhase(game) {
@@ -70,8 +78,8 @@ function beginTeamPhase(game) {
     const taskId = game.vote_queue.shift();
     startVote(game, taskId, IDS.filter(id => game.registrations[id] === taskId));
   } else {
+    setPhase(game, 'INVESTMENT_SUBMISSION');
     game.vote_session = null;
-    game.phase = 'INVESTMENT_SUBMISSION';
     if (!Object.keys(game.active_teams).length) settleRound(game);
   }
 }
@@ -100,7 +108,7 @@ export function privateMessagesSent(game, actorId) {
 }
 export function advanceTime(game, now = Date.now) {
   if (game.phase !== 'PRIVATE_CHAT' || now() < game.private_chat.ends_at) return false;
-  game.phase = 'REGISTRATION';
+  setPhase(game, 'REGISTRATION');
   game.thinking = [];
   game.version++;
   addMessage(game, 'SYSTEM', '30 秒私聊结束，进入任务报名阶段。');
@@ -110,6 +118,15 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt, 
   requireRule(IDS.includes(actorId), '未知角色');
   requireRule(action && typeof action === 'object', '行动格式错误');
   switch (action.type) {
+    case 'start_private_chat': {
+      requireRule(actorId === 'P0', '只有玩家 P0 可以开启私聊');
+      requireRule(game.phase === 'PRIVATE_CHAT_READY', '当前阶段不能开启私聊');
+      const startedAt = now();
+      setPhase(game, 'PRIVATE_CHAT');
+      game.private_chat = { started_at: startedAt, ends_at: startedAt + PRIVATE_CHAT_DURATION_MS, agent_last_seen: {} };
+      addMessage(game, 'SYSTEM', '30 秒私聊已开启。每名角色今天跨所有对象最多发送 5 条，主动联系和回复共用额度。');
+      break;
+    }
     case 'private_message': {
       requireRule(game.phase === 'PRIVATE_CHAT' && now() < game.private_chat.ends_at, '当前私聊阶段尚未开始或已结束');
       requireRule(privateMessagesSent(game, actorId) < PRIVATE_CHAT_MESSAGE_LIMIT, '每天最多发送 5 条私聊，今日额度已用完');
@@ -134,14 +151,12 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt, 
       if (game.phase === 'NEGOTIATION') {
         game.negotiation_turn_index++;
         if (game.negotiation_turn_index === 4) {
-          const startedAt = now();
-          game.phase = 'PRIVATE_CHAT';
-          game.private_chat = { started_at: startedAt, ends_at: startedAt + PRIVATE_CHAT_DURATION_MS, agent_last_seen: {} };
-          addMessage(game, 'SYSTEM', '公共协商结束，开启 30 秒私聊。每名角色今天最多发送 5 条私聊，主动联系和回复共用额度。');
+          setPhase(game, 'PRIVATE_CHAT_READY');
+          addMessage(game, 'SYSTEM', '公共协商结束。等待点击“开始30秒私聊”；点击前不计时，也不能发送私聊。');
         }
       } else {
         game.vote_session.speech_index++;
-        if (game.vote_session.speech_index === game.vote_session.candidate_ids.length) game.phase = 'VOTE_SUBMISSION';
+        if (game.vote_session.speech_index === game.vote_session.candidate_ids.length) setPhase(game, 'VOTE_SUBMISSION');
       }
       break;
     }
@@ -272,7 +287,7 @@ export function settleRound(game) {
   updateMemories(game, settlements);
   const balances = Object.fromEntries(game.players.map(p => [p.id, p.gold]));
   game.round_results.push({ day: game.current_day, public_gold_balances: balances, registrations: { ...game.registrations }, registration_status: { ...game.registration_status }, settlements, vote_results: game.vote_results.filter(v => v.day === game.current_day), net_changes: Object.fromEntries(IDS.map(id => [id, balances[id] - game.day_start_balances[id]])) });
-  game.phase = game.current_day === game.max_days ? 'FINISHED' : 'ROUND_UPDATE';
+  setPhase(game, game.current_day === game.max_days ? 'FINISHED' : 'ROUND_UPDATE');
   if (game.phase === 'FINISHED') {
     game.ranking = rankPlayers(game.players);
   }

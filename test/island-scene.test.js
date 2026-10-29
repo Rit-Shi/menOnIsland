@@ -9,6 +9,7 @@ const now = () => 1000;
 function registration(choices) {
   const game = createGame({ id: 'scene', randomInt: () => 0 });
   for (const id of game.negotiation_order) applyAction(game, id, { type: 'speech', message: '公开协商。' }, () => 0, now);
+  applyAction(game, 'P0', { type: 'start_private_chat' }, () => 0, now);
   advanceTime(game, () => 31000);
   choices?.forEach((task_id, index) => applyAction(game, ids[index], { type: 'register', task_id }));
   return game;
