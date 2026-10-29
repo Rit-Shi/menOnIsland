@@ -25,5 +25,5 @@
 ### Task 2: Interface and acceptance
 
 - [x] Hide task-card rosters/counts during selection; show submitted status separately and own choice; confirmation button explicitly publishes.
-- [ ] Update rules and documentation, verify offline browser selection/reload/reveal and restart main service preserving saved progress.
-- [ ] Commit interface, request independent review, address material findings with regression tests and record final verification.
+- [x] Update rules and documentation, verify offline browser selection/reload/reveal and restart main service preserving saved progress.
+- [x] Commit interface, request independent review, address material findings with regression tests and record final verification.
