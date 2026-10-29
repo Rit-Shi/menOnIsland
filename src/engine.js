@@ -163,7 +163,7 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt, 
       requireRule(!game.thinking?.length && IDS.slice(1).every(id => (game.agent_registration_revision?.[id] ?? 0) === (game.registration_revision ?? 0)), '请等待本次重新评估结束');
       game.registration_reviews = (game.registration_reviews ?? 0) + 1;
       game.registration_revision = (game.registration_revision ?? 0) + 1;
-      addMessage(game, 'SYSTEM', '玩家邀请三名 Agent 根据最新报名和各自收到的消息重新评估任务选择。');
+      addMessage(game, 'SYSTEM', '玩家邀请三名 Agent 根据此前协商和各自选择重新评估任务。实际报名仍保密，统一确认后公布。');
       break;
     }
     case 'lock_registration': {

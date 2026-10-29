@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createGame, applyAction, privateMessagesSent } from '../src/engine.js';
+import { createGame, applyAction, privateMessagesSent, advanceTime } from '../src/engine.js';
 import { GameStore } from '../src/store.js';
 import { createRunner } from '../src/runner.js';
 
@@ -183,5 +183,31 @@ test('a slow expired save does not delay recovery or deadline timers of another 
   } finally {
     releaseSlow?.({ action: { type: 'register', task_id: 'A' }, fallback: false });
     await recovery;
+  }
+});
+
+test('initial and reconsidered registration requests never contain anyone elses actual task', async t => {
+  const observations = [];
+  const f = await fixture(t, async (_config, observation, kind) => {
+    if (kind !== 'register') return pass;
+    observations.push(observation);
+    return { action: { type: 'register', task_id: observation.viewer_id === 'P1' ? 'B' : 'A' }, fallback: false };
+  });
+  f.setTime(31000);
+  await f.store.transact('runner', game => {
+    advanceTime(game, f.now);
+    applyAction(game, 'P0', { type: 'register', task_id: 'C' });
+  });
+  await f.runner.kick('runner');
+  await f.runner.idle();
+  assert.equal(observations.length, 3);
+  assert.ok(observations.every(view => Object.keys(view.registrations).length === 0));
+  await f.store.transact('runner', game => applyAction(game, 'P0', { type: 'reconsider_registrations' }));
+  await f.runner.kick('runner');
+  await f.runner.idle();
+  assert.equal(observations.length, 6);
+  for (const view of observations.slice(3)) {
+    assert.deepEqual(view.registrations, { [view.viewer_id]: view.viewer_id === 'P1' ? 'B' : 'A' });
+    assert.deepEqual(view.registration_submitted, { P0: true, P1: true, P2: true, P3: true });
   }
 });

@@ -3,6 +3,7 @@ import { IDS, TASKS, currentSpeaker, privateMessagesSent, PRIVATE_CHAT_MESSAGE_L
 export function getObservation(game, viewerId, now = Date.now) {
   if (!IDS.includes(viewerId)) throw new Error('未知观察者');
   const agentView = viewerId !== 'P0';
+  const registrationSecret = game.phase === 'REGISTRATION';
   const nameFor = p => agentView && p.id === 'P0' ? 'P0' : p.name;
   const messageFor = message => agentView && message.from === 'SYSTEM'
     ? { ...message, text: message.text.replaceAll('人类玩家', 'P0').replaceAll('玩家', 'P0').replaceAll('人类', '角色') }
@@ -22,7 +23,10 @@ export function getObservation(game, viewerId, now = Date.now) {
     id: game.id, schema_version: game.schema_version, version: game.version, current_day: game.current_day, max_days: game.max_days, phase: game.phase,
     viewer_id: viewerId,
     players: game.players.map(p => ({ id: p.id, name: nameFor(p), ...(!agentView ? { is_human: p.is_human } : {}), gold: p.gold, ...(p.id === viewerId ? { statistics: p.statistics } : {}) })),
-    tasks: TASKS, registrations: game.registrations, registration_status: game.registration_status,
+    tasks: TASKS,
+    registrations: registrationSecret ? Object.fromEntries(Object.entries(game.registrations).filter(([id]) => id === viewerId)) : game.registrations,
+    registration_submitted: Object.fromEntries(IDS.map(id => [id, Object.hasOwn(game.registrations, id)])),
+    registration_status: game.registration_status,
     registration_reviews_remaining: 2 - (game.registration_reviews ?? 0),
     registration_review_pending: IDS.slice(1).some(id => !Object.hasOwn(game.registrations, id) || (game.agent_registration_revision?.[id] ?? 0) < (game.registration_revision ?? 0)),
     active_teams: game.active_teams,
