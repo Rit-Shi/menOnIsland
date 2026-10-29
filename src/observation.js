@@ -1,6 +1,6 @@
-import { IDS, TASKS, currentSpeaker } from './engine.js';
+import { IDS, TASKS, currentSpeaker, privateMessagesSent, PRIVATE_CHAT_MESSAGE_LIMIT } from './engine.js';
 
-export function getObservation(game, viewerId) {
+export function getObservation(game, viewerId, now = Date.now) {
   if (!IDS.includes(viewerId)) throw new Error('未知观察者');
   const roundResults = game.round_results.map(result => ({
     day: result.day,
@@ -23,6 +23,13 @@ export function getObservation(game, viewerId) {
     active_teams: game.active_teams,
     negotiation_order: game.negotiation_order, negotiation_turn_index: game.negotiation_turn_index,
     current_speaker: currentSpeaker(game),
+    private_chat: game.private_chat ? {
+      started_at: game.private_chat.started_at, ends_at: game.private_chat.ends_at,
+      remaining_ms: Math.max(0, game.private_chat.ends_at - now()),
+      message_limit: PRIVATE_CHAT_MESSAGE_LIMIT,
+      messages_sent: privateMessagesSent(game, viewerId),
+      remaining_messages: Math.max(0, PRIVATE_CHAT_MESSAGE_LIMIT - privateMessagesSent(game, viewerId)),
+    } : null,
     messages: game.messages.filter(m => !m.to || m.from === viewerId || m.to === viewerId),
     promises: game.promises,
     vote_session: session ? { task_id: session.task_id, candidate_ids: session.candidate_ids, vote_round: session.vote_round, speech_index: session.speech_index } : null,
@@ -35,8 +42,9 @@ export function getObservation(game, viewerId) {
   };
   return structuredClone(view);
 }
-export function getHumanView(game) {
-  const view = getObservation(game, 'P0');
+export function getHumanView(game, now = Date.now) {
+  const view = getObservation(game, 'P0', now);
+  view.server_time = now();
   delete view.memories;
   view.thinking = game.thinking ?? [];
   view.diagnostics = ['ROUND_UPDATE', 'FINISHED'].includes(game.phase)

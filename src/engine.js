@@ -1,6 +1,8 @@
 import { randomInt as secureRandomInt } from 'node:crypto';
 
 export const IDS = ['P0', 'P1', 'P2', 'P3'];
+export const PRIVATE_CHAT_DURATION_MS = 30000;
+export const PRIVATE_CHAT_MESSAGE_LIMIT = 5;
 export const TASKS = {
   A: { id: 'A', name: '收集淡水', required_members: null, threshold: 0, multiplier: 0, fixed_reward: 2 },
   B: { id: 'B', name: '搭建庇护所', required_members: 2, threshold: 10, multiplier: 1.5, fixed_reward: 0 },
@@ -45,6 +47,7 @@ function startDay(game, randomInt) {
   game.vote_session = null;
   game.vote_queue = [];
   game.phase = 'NEGOTIATION';
+  game.private_chat = null;
   game.day_start_balances = Object.fromEntries(game.players.map(p => [p.id, p.gold]));
   addMessage(game, 'SYSTEM', `第 ${game.current_day} 天开始。公共协商从${player(game, game.negotiation_order[0]).name}开始，依次发言。`);
 }
@@ -92,15 +95,31 @@ function resolveVote(game, randomInt) {
     beginTeamPhase(game);
   }
 }
-export function applyAction(game, actorId, action, randomInt = secureRandomInt) {
+export function privateMessagesSent(game, actorId) {
+  return game.messages.filter(m => m.day === game.current_day && m.from === actorId && m.to).length;
+}
+export function advanceTime(game, now = Date.now) {
+  if (game.phase !== 'PRIVATE_CHAT' || now() < game.private_chat.ends_at) return false;
+  game.phase = 'REGISTRATION';
+  game.thinking = [];
+  game.version++;
+  addMessage(game, 'SYSTEM', '30 秒私聊结束，进入任务报名阶段。');
+  return true;
+}
+export function applyAction(game, actorId, action, randomInt = secureRandomInt, now = Date.now) {
   requireRule(IDS.includes(actorId), '未知角色');
   requireRule(action && typeof action === 'object', '行动格式错误');
   switch (action.type) {
     case 'private_message': {
-      requireRule(game.phase !== 'FINISHED', '游戏已结束，当前阶段不能私聊');
+      requireRule(game.phase === 'PRIVATE_CHAT' && now() < game.private_chat.ends_at, '当前私聊阶段尚未开始或已结束');
+      requireRule(privateMessagesSent(game, actorId) < PRIVATE_CHAT_MESSAGE_LIMIT, '每天最多发送 5 条私聊，今日额度已用完');
       requireRule(IDS.includes(action.to) && action.to !== actorId, '私聊对象必须是其他角色');
       const message = validateMessage(action.message);
       addMessage(game, actorId, message, action.to);
+      break;
+    }
+    case 'private_pass': {
+      requireRule(actorId !== 'P0' && game.phase === 'PRIVATE_CHAT' && now() < game.private_chat.ends_at, '当前阶段不能跳过私聊回复');
       break;
     }
     case 'speech': {
@@ -114,7 +133,12 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt) 
       if (action.promise) game.promises.push({ day: game.current_day, actor_id: actorId, task_id: action.promise.task_id, amount: action.promise.amount, message_id: game.messages.at(-1).id });
       if (game.phase === 'NEGOTIATION') {
         game.negotiation_turn_index++;
-        if (game.negotiation_turn_index === 4) game.phase = 'REGISTRATION';
+        if (game.negotiation_turn_index === 4) {
+          const startedAt = now();
+          game.phase = 'PRIVATE_CHAT';
+          game.private_chat = { started_at: startedAt, ends_at: startedAt + PRIVATE_CHAT_DURATION_MS, agent_last_seen: {} };
+          addMessage(game, 'SYSTEM', '公共协商结束，开启 30 秒私聊。每名角色今天最多发送 5 条私聊，主动联系和回复共用额度。');
+        }
       } else {
         game.vote_session.speech_index++;
         if (game.vote_session.speech_index === game.vote_session.candidate_ids.length) game.phase = 'VOTE_SUBMISSION';

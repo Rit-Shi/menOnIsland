@@ -8,11 +8,13 @@ import { loadConfig } from '../src/config.js';
 import { request as httpRequest } from 'node:http';
 
 async function fixture(t, decision) {
+  let time = 1000;
+  const now = () => time;
   const dir = await mkdtemp(join(tmpdir(), 'island-test-'));
   const config = loadConfig({ env: { DATA_DIR: dir }, envPath: null });
   const app = createApp({ config, decision: decision ?? (async (_config, observation, kind) => ({
-    action: kind === 'speech' ? { type: 'speech', message: '先收集淡水。' } : { type: 'register', task_id: 'A' }, privateMessages: [], fallback: false,
-  })), randomInt: () => 0 });
+    action: kind === 'speech' ? { type: 'speech', message: '先收集淡水。' } : kind === 'private_chat' ? { type: 'private_pass' } : { type: 'register', task_id: 'A' }, privateMessages: [], fallback: false,
+  })), randomInt: () => 0, now });
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   let cookie = '';
@@ -25,6 +27,7 @@ async function fixture(t, decision) {
   async function waitFor(phase) {
     for (let i = 0; i < 200; i++) {
       const response = await request('/api/state');
+      if (phase === 'REGISTRATION' && response.data.phase === 'PRIVATE_CHAT') time = response.data.private_chat.ends_at;
       const registered = phase !== 'REGISTRATION' || ['P1', 'P2', 'P3'].every(id => response.data.registrations[id]);
       if (response.data.phase === phase && !response.data.thinking.length && registered) return response.data;
       await new Promise(resolve => setTimeout(resolve, 5));
@@ -32,7 +35,7 @@ async function fixture(t, decision) {
     throw new Error(`Timed out waiting for ${phase}`);
   }
   t.after(async () => { await app.idle(); await new Promise(resolve => app.server.close(resolve)); await rm(dir, { recursive: true, force: true }); });
-  return { app, config, request, waitFor, base, getCookie: () => cookie };
+  return { app, config, request, waitFor, base, getCookie: () => cookie, now, setTime: value => { time = value; } };
 }
 
 test('session is required and clients cannot impersonate agents', async t => {
@@ -98,6 +101,7 @@ test('oversubscribed B completes two vote rounds and hides pending agent investm
     const id = observation.viewer_id;
     const target = observation.vote_session?.candidate_ids.includes('P3') ? (id === 'P3' ? 'P2' : 'P3') : (id === 'P1' ? 'P2' : 'P1');
     const action = kind === 'speech' ? { type: 'speech', message: '留下我，我会合作。' }
+      : kind === 'private_chat' ? { type: 'private_pass' }
       : kind === 'register' ? { type: 'register', task_id: 'B' }
       : kind === 'vote' ? { type: 'vote', target_id: target }
       : { type: 'invest', amount: 5 };
@@ -128,6 +132,8 @@ test('oversubscribed B completes two vote rounds and hides pending agent investm
 test('accepted request identifiers cannot cause duplicate private messages', async t => {
   const f = await fixture(t);
   await f.request('/api/games', {});
+  await f.request('/api/action', { action: { type: 'speech', message: '开启协商' } });
+  await f.waitFor('PRIVATE_CHAT');
   const body = { request_id: 'same-request', action: { type: 'private_message', to: 'P1', message: '只应出现一次' } };
   await f.request('/api/action', body);
   await f.request('/api/action', body);
@@ -138,6 +144,8 @@ test('accepted request identifiers cannot cause duplicate private messages', asy
 test('UTF-8 characters spanning HTTP chunks are preserved in persisted private chat', async t => {
   const f = await fixture(t);
   await f.request('/api/games', {});
+  await f.request('/api/action', { action: { type: 'speech', message: '开启协商' } });
+  await f.waitFor('PRIVATE_CHAT');
   const payload = Buffer.from(JSON.stringify({ action: { type: 'private_message', to: 'P1', message: '你好' } }));
   const split = payload.indexOf(Buffer.from('你')) + 1;
   const response = await new Promise((resolve, reject) => {
@@ -157,6 +165,7 @@ test('UTF-8 characters spanning HTTP chunks are preserved in persisted private c
 test('agents can reconsider their existing task after the player changes registration', async t => {
   const f = await fixture(t, async (_config, observation, kind) => ({
     action: kind === 'speech' ? { type: 'speech', message: '我们可以去 B' }
+      : kind === 'private_chat' ? { type: 'private_pass' }
       : { type: 'register', task_id: observation.registrations.P0 === 'A' ? 'A' : 'B' }, privateMessages: [], fallback: false,
   }));
   await f.request('/api/games', {});
@@ -173,4 +182,24 @@ test('agents can reconsider their existing task after the player changes registr
     await new Promise(resolve => setTimeout(resolve, 5));
   }
   assert.fail('Agent registrations were never reconsidered');
+});
+
+test('private API enforces a shared five-message quota under concurrent requests and closes exactly at deadline', async t => {
+  const f = await fixture(t);
+  await f.request('/api/games', {});
+  const early = await f.request('/api/action', { action: { type: 'private_message', to: 'P1', message: '过早' } });
+  assert.equal(early.status, 409);
+  await f.request('/api/action', { action: { type: 'speech', message: '开始协商' } });
+  const phase = await f.waitFor('PRIVATE_CHAT');
+  assert.equal(phase.private_chat.ends_at, 31000);
+  const results = await Promise.all(Array.from({ length: 6 }, (_, i) => f.request('/api/action', { request_id: `private-${i}`, action: { type: 'private_message', to: ['P1', 'P2', 'P3'][i % 3], message: `第${i}条` } })));
+  assert.equal(results.filter(r => r.status === 200).length, 5);
+  assert.equal(results.filter(r => r.status === 409).length, 1);
+  const state = (await f.request('/api/state')).data;
+  assert.equal(state.private_chat.remaining_messages, 0);
+  assert.equal(state.messages.filter(m => m.from === 'P0' && m.to).length, 5);
+  f.setTime(31000);
+  const late = await f.request('/api/action', { action: { type: 'private_message', to: 'P1', message: '过期' } });
+  assert.equal(late.status, 409);
+  assert.equal((await f.waitFor('REGISTRATION')).private_chat.ends_at, 31000);
 });

@@ -23,6 +23,7 @@ test('gateway uses the chosen agent model and only its filtered observation', as
   await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => gateway.close(resolve)));
   const game = createGame({ id: 'model', randomInt: () => 1 });
+  [...game.negotiation_order].forEach(id => applyAction(game, id, { type: 'speech', message: '公开协商' }));
   applyAction(game, 'P2', { type: 'private_message', to: 'P3', message: '不能出现在林舟上下文里' });
   const config = { baseUrl: `http://127.0.0.1:${gateway.address().port}/v1`, apiKey: 'test-only-key', models: { P1: 'model-one' }, timeoutMs: 1000 };
   const decision = await requestDecision(config, getObservation(game, 'P1'), 'speech');
@@ -32,6 +33,36 @@ test('gateway uses the chosen agent model and only its filtered observation', as
   assert.equal(received.body.model, 'model-one');
   assert.equal(received.auth, 'Bearer test-only-key');
   assert.ok(!JSON.stringify(received.body).includes('不能出现在林舟上下文里'));
+  assert.deepEqual(decision.privateMessages, []);
+});
+
+test('private model call sends one addressed message or passes without exposing other inboxes', async t => {
+  let output = { to: 'P0', message: '我愿意和你合作' };
+  let context;
+  const gateway = createServer(async (req, res) => {
+    let body = ''; for await (const chunk of req) body += chunk;
+    context = JSON.parse(JSON.parse(body).messages[1].content);
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }));
+  });
+  await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => gateway.close(resolve)));
+  const game = createGame({ id: 'private-adapter', randomInt: () => 0 });
+  [...game.negotiation_order].forEach(id => applyAction(game, id, { type: 'speech', message: '协商' }));
+  applyAction(game, 'P2', { type: 'private_message', to: 'P3', message: '其他人的秘密' });
+  const config = { baseUrl: `http://127.0.0.1:${gateway.address().port}/v1`, apiKey: 'test-key', models: { P1: 'one' }, timeoutMs: 1000 };
+  let result = await requestDecision(config, getObservation(game, 'P1'), 'private_chat');
+  assert.equal(result.fallback, false);
+  assert.deepEqual(result.action, { type: 'private_message', to: 'P0', message: '我愿意和你合作' });
+  assert.equal(context.private_chat.remaining_messages, 5);
+  assert.ok(!JSON.stringify(context).includes('其他人的秘密'));
+  output = { pass: true };
+  result = await requestDecision(config, getObservation(game, 'P1'), 'private_chat');
+  assert.equal(result.fallback, false);
+  assert.deepEqual(result.action, { type: 'private_pass' });
+  output = { to: 'P1', message: '不能自发私聊' };
+  result = await requestDecision(config, getObservation(game, 'P1'), 'private_chat');
+  assert.equal(result.fallback, true);
+  assert.deepEqual(result.action, { type: 'private_pass' });
 });
 
 test('invalid or unavailable model yields legal fallbacks without leaking its response', async () => {

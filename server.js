@@ -27,9 +27,9 @@ async function readBody(request) {
   const body = Buffer.concat(chunks).toString('utf8');
   try { return JSON.parse(body || '{}'); } catch { throw new RuleError('JSON 格式错误', 400); }
 }
-export function createApp({ config = loadConfig(), decision, randomInt } = {}) {
+export function createApp({ config = loadConfig(), decision, randomInt, now = Date.now } = {}) {
   const store = new GameStore(config.dataDir);
-  const runner = createRunner({ store, config, decision, randomInt });
+  const runner = createRunner({ store, config, decision, randomInt, now });
   async function authenticate(request) {
     const cookie = request.headers.cookie?.split(';').map(s => s.trim()).find(s => s.startsWith('island_session='))?.slice(15);
     if (!cookie || !/^[a-f0-9-]{36}\.[a-f0-9]{64}$/.test(cookie)) throw new RuleError('请开始一局新游戏', 401);
@@ -54,13 +54,13 @@ export function createApp({ config = loadConfig(), decision, randomInt } = {}) {
         const game = createGame({ id, randomInt });
         game.session_hash = hash(token);
         await store.save(game);
-        json(response, 201, getHumanView(game), { 'Set-Cookie': `island_session=${id}.${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000` });
+        json(response, 201, getHumanView(game, now), { 'Set-Cookie': `island_session=${id}.${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000` });
         runner.kick(id);
         return;
       }
       if (request.method === 'GET' && url.pathname === '/api/state') {
         const game = await authenticate(request);
-        json(response, 200, getHumanView(game));
+        json(response, 200, getHumanView(game, now));
         runner.kick(game.id);
         return;
       }
@@ -72,11 +72,11 @@ export function createApp({ config = loadConfig(), decision, randomInt } = {}) {
           if (body.expected_day != null && body.expected_day !== game.current_day) throw new RuleError('页面状态已过期，请重试');
           if (body.request_id && game.accepted_requests?.includes(body.request_id)) return game;
           if (body.action?.type === 'lock_registration' && game.thinking?.length) throw new RuleError('请等待 Agent 完成报名');
-          applyAction(game, 'P0', body.action, randomInt);
+          applyAction(game, 'P0', body.action, randomInt, now);
           if (typeof body.request_id === 'string' && body.request_id.length <= 100) game.accepted_requests = [...(game.accepted_requests ?? []), body.request_id].slice(-100);
           return game;
         });
-        json(response, 200, getHumanView(game));
+        json(response, 200, getHumanView(game, now));
         runner.kick(game.id);
         return;
       }
@@ -96,6 +96,8 @@ export function createApp({ config = loadConfig(), decision, randomInt } = {}) {
       else response.end();
     }
   });
+  server.on('listening', () => { runner.resume().catch(error => console.error(`[resume] ${error.code || error.name}`)); });
+  server.on('close', runner.close);
   return { server, store, idle: runner.idle };
 }
 

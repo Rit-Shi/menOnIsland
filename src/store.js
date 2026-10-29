@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { migrateGame } from './migrations.js';
@@ -8,6 +8,10 @@ export class GameStore {
   filename(id) {
     if (!/^[a-zA-Z0-9-]{1,80}$/.test(id)) throw new Error('invalid_game_id');
     return join(this.directory, `${id}.json`);
+  }
+  async listIds() {
+    try { return (await readdir(this.directory)).filter(name => /^[a-zA-Z0-9-]{1,80}\.json$/.test(name)).map(name => name.slice(0, -5)); }
+    catch (error) { if (error.code === 'ENOENT') return []; throw error; }
   }
   async load(id) {
     if (!this.cache.has(id)) {
