@@ -44,5 +44,5 @@
 - [x] Write migration fixtures for two B days, C rounding, failed/underfilled roles, pending investments and finished ranking; exercise backup and repeated/concurrent load against real temporary files.
 - [x] Run `node --test test/store.test.js` and confirm the new expectations fail before implementing migration.
 - [x] Implement migration, update rules/formulas/examples, and run `npm test` (all green).
-- [ ] Migrate local saves with the server stopped, verify unchanged phase/actions and integer history, restart the local server and inspect the UI.
-- [ ] Commit migration and documentation; perform final independent review and fix any material findings with regression tests.
+- [x] Migrate local saves, restart the local server to discard old cached state, and verify unchanged phase/actions, integer history and UI.
+- [x] Commit migration and documentation; perform final independent review and fix any material findings with regression tests.
