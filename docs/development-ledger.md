@@ -8,7 +8,7 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - Ruling: use integer twelfths of a coin, which exactly represent every possible B/C reward for integer contributions.
 - Ruling: local browser application with loopback server; no external deployment or source upload is part of this development request.
 - Task 1: complete — authoritative rules and private observations.
-- Task 2: complete — gateway adapter, persistence and human API; external P2 model ID confirmation pending.
+- Task 2: complete — gateway adapter, persistence and human API; all configured models have passed live checks.
 - Task 3: complete — playable interface, browser acceptance and final review fixes.
 
 ## Remote repository setup
@@ -48,3 +48,9 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - User preview remains at http://127.0.0.1:3000; temporary offline QA server is stopped.
 - P2 model choice remains pending; no silent substitution was made.
 - GitHub HTTPS authentication was unavailable during push preflight; changes remain local on codex/island-mvp.
+
+## Confirmed P2 model correction
+
+- User confirmed the intended model ID is deepseek-v4-flash, replacing the previously supplied deepseek-v4.0-flash.
+- Updated the source default, example configuration, README and ignored local configuration. Historical pending-choice notes above are superseded.
+- A real P2 speech request returned a valid action with no fallback in 3102 ms; all 31 offline tests pass.

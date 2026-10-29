@@ -11,7 +11,7 @@ export function loadConfig({ env = process.env, envPath = resolve('.env.local') 
   }
   const values = { ...local, ...env };
   const baseUrl = (values.AI_BASE_URL || '').replace(/\/+$/, '');
-  const models = { P1: values.MODEL_P1 || 'deepseek-v4.1-flash', P2: values.MODEL_P2 || 'deepseek-v4.0-flash', P3: values.MODEL_P3 || 'glm-5.2' };
+  const models = { P1: values.MODEL_P1 || 'deepseek-v4.1-flash', P2: values.MODEL_P2 || 'deepseek-v4-flash', P3: values.MODEL_P3 || 'glm-5.2' };
   const apiKey = values.AI_API_KEY || '';
   return {
     baseUrl, apiKey, models,

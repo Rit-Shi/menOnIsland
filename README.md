@@ -19,7 +19,7 @@ npm start
 AI_BASE_URL=https://your-gateway.example.com/v1
 AI_API_KEY=在本机填写
 MODEL_P1=deepseek-v4.1-flash
-MODEL_P2=deepseek-v4.0-flash
+MODEL_P2=deepseek-v4-flash
 MODEL_P3=glm-5.2
 ```
 
