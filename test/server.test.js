@@ -7,6 +7,7 @@ import { createApp } from '../server.js';
 import { loadConfig } from '../src/config.js';
 import { request as httpRequest } from 'node:http';
 import { flushModelLogs } from '../src/model-log.js';
+import { createGame, applyAction, advanceTime } from '../src/engine.js';
 
 async function fixture(t, decision) {
   let time = 1000;
@@ -91,6 +92,34 @@ test('eight-day API playthrough survives refresh and persists exact balances', a
   assert.equal(saved.players[0].gold, 26);
   assert.equal(final.session_hash, undefined);
   assert.equal(final.players[1].personality, undefined);
+});
+
+test('viewing an old settled save enrolls current reflections privately and blocks next-day until they finish',async t=>{
+  let release;const slow=new Promise(resolve=>{release=resolve;});const calls=[];
+  const f=await fixture(t,async(_config,view,kind)=>{
+    assert.equal(kind,'reflect');calls.push(view.viewer_id);
+    if(view.viewer_id==='P2')await slow;
+    return {action:{type:'reflect',day:view.current_day,summary:'PRIVATE_REFLECTION_'+view.viewer_id,lesson:'重视相对金币差距。',next_plan:'争取独占第一。'},fallback:false};
+  });
+  const created=(await f.request('/api/games',{})).data;
+  const old=createGame({id:created.id,randomInt:()=>0});
+  for(const id of ['P0','P1','P2','P3'])applyAction(old,id,{type:'speech',message:'旧存档公聊'},()=>0,()=>1000);
+  applyAction(old,'P0',{type:'start_private_chat'},()=>0,()=>1000);advanceTime(old,()=>31000);
+  for(const id of ['P0','P1','P2','P3'])applyAction(old,id,{type:'register',task_id:'A'});
+  applyAction(old,'P0',{type:'lock_registration'});delete old.reflection_round;
+  await f.app.store.transact(created.id,game=>{const session=game.session_hash;Object.assign(game,old,{session_hash:session});});
+  const historical={...structuredClone(old),id:'unselected-history'};await f.app.store.save(historical);
+  try {
+    const first=(await f.request('/api/state')).data;
+    assert.equal(first.reflection_status.complete,false);
+    assert.equal((await f.request('/api/action',{action:{type:'next_day'}})).status,409);
+    assert.ok(!JSON.stringify((await f.request('/api/state')).data).includes('PRIVATE_REFLECTION_'));
+    release();await f.app.idle();
+    const done=(await f.request('/api/state')).data;assert.equal(done.reflection_status.complete,true);
+    assert.deepEqual(calls.sort(),['P1','P2','P3']);
+    assert.equal((await f.app.store.load('unselected-history')).reflection_round,undefined);
+    assert.equal((await f.request('/api/action',{action:{type:'next_day'}})).status,200);
+  } finally {release();}
 });
 
 test('unknown routes cannot expose local credentials or storage', async t => {

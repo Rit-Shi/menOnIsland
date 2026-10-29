@@ -57,6 +57,7 @@ test('invalid messages and Agent passes do not use quota; next day resets quota'
   engine.advanceTime(game, () => 31000);
   ids.forEach(id => engine.applyAction(game, id, { type: 'register', task_id: 'A' }));
   engine.applyAction(game, 'P0', { type: 'lock_registration' });
+  for (const actor of ['P1','P2','P3']) engine.applyAction(game, actor, { type:'reflect', day:game.current_day, summary:'当天结果已回顾。', lesson:'共同获利不等于独自获胜。', next_plan:'重新评估可见差距。' });
   engine.applyAction(game, 'P0', { type: 'next_day' }, () => 0);
   assert.equal(game.private_chat, null);
   assert.equal(engine.privateMessagesSent(game, 'P0'), 0);

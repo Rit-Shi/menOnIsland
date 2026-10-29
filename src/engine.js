@@ -3,6 +3,7 @@ import { randomInt as secureRandomInt, randomUUID } from 'node:crypto';
 export const IDS = ['P0', 'P1', 'P2', 'P3'];
 export const PRIVATE_CHAT_DURATION_MS = 30000;
 export const PRIVATE_CHAT_MESSAGE_LIMIT = 5;
+export const REFLECTION_FIELD_LIMIT = 600;
 export const TASKS = {
   A: { id: 'A', name: '收集淡水', required_members: null, threshold: 0, multiplier: 0, fixed_reward: 2 },
   B: { id: 'B', name: '搭建庇护所', required_members: 2, threshold: 10, multiplier: 1.5, fixed_reward: 0 },
@@ -35,7 +36,7 @@ export function createGame({ id, randomInt = secureRandomInt } = {}) {
     created_at: new Date().toISOString(),
     players: IDS.map((id, i) => ({ id, name: names[i], is_human: i === 0, gold: 10, personality: personalities[i], statistics: { success: 0, failure: 0, eliminated: 0 } })),
     messages: [], promises: [], vote_results: [], round_results: [], ranking: [], phase_events: [],
-    memories: Object.fromEntries(IDS.map(id => [id, { facts: [], trust: Object.fromEntries(IDS.filter(other => other !== id).map(other => [other, 0])) }])),
+    memories: Object.fromEntries(IDS.map(id => [id, { facts: [], trust: Object.fromEntries(IDS.filter(other => other !== id).map(other => [other, 0])), reflections: [] }])),
     diagnostics: [], thinking: [],
   };
   startDay(game, randomInt);
@@ -56,6 +57,7 @@ function startDay(game, randomInt) {
   game.vote_queue = [];
   setPhase(game, 'NEGOTIATION');
   game.private_chat = null;
+  game.reflection_round = null;
   game.day_start_balances = Object.fromEntries(game.players.map(p => [p.id, p.gold]));
   addMessage(game, 'SYSTEM', `第 ${game.current_day} 天开始。公共协商从${player(game, game.negotiation_order[0]).name}开始，依次发言。`);
 }
@@ -114,10 +116,37 @@ export function advanceTime(game, now = Date.now) {
   addMessage(game, 'SYSTEM', '30 秒私聊结束，进入任务报名阶段。');
   return true;
 }
+export function ensureDailyReflection(game) {
+  if (!['ROUND_UPDATE','FINISHED'].includes(game.phase) || !game.round_results.some(result => result.day === game.current_day)) return false;
+  if (game.reflection_round?.day === game.current_day) return false;
+  game.reflection_round = { day: game.current_day };
+  for (const id of IDS.slice(1)) game.memories[id].reflections ||= [];
+  game.version++;
+  return true;
+}
+export function reflectionActors(game) {
+  if (!['ROUND_UPDATE','FINISHED'].includes(game?.phase) || game.reflection_round?.day !== game.current_day) return [];
+  return IDS.slice(1).filter(id => !game.memories[id].reflections?.some(record => record.day === game.current_day));
+}
 export function applyAction(game, actorId, action, randomInt = secureRandomInt, now = Date.now) {
   requireRule(IDS.includes(actorId), '未知角色');
   requireRule(action && typeof action === 'object', '行动格式错误');
   switch (action.type) {
+    case 'reflect': {
+      requireRule(actorId !== 'P0', '只有 Agent 角色可以提交日终反思');
+      requireRule(['ROUND_UPDATE','FINISHED'].includes(game.phase) && game.reflection_round?.day === game.current_day, '当前阶段尚未结算，不能反思');
+      requireRule(action.day === game.current_day, '反思日期必须是当天');
+      requireRule(reflectionActors(game).includes(actorId), '今天已完成反思，不能重复提交');
+      const record = { day: game.current_day };
+      for (const field of ['summary','lesson','next_plan']) {
+        requireRule(typeof action[field] === 'string' && action[field].trim().length > 0 && action[field].length <= REFLECTION_FIELD_LIMIT, `反思${field}必须为1至${REFLECTION_FIELD_LIMIT}字的文字`);
+        record[field] = action[field].trim();
+      }
+      requireRule(action.source == null || ['model','fallback'].includes(action.source), '反思来源不合法');
+      record.source = action.source || 'model';
+      game.memories[actorId].reflections = [...(game.memories[actorId].reflections || []), record].slice(-8);
+      break;
+    }
     case 'start_private_chat': {
       requireRule(actorId === 'P0', '只有玩家 P0 可以开启私聊');
       requireRule(game.phase === 'PRIVATE_CHAT_READY', '当前阶段不能开启私聊');
@@ -222,6 +251,8 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt, 
     }
     case 'next_day': {
       requireRule(actorId === 'P0' && game.phase === 'ROUND_UPDATE', '当前阶段不能进入下一天');
+      ensureDailyReflection(game);
+      requireRule(game.reflection_round?.day === game.current_day && reflectionActors(game).length === 0, '请等待三名 Agent 完成日终反思');
       game.current_day++;
       startDay(game, randomInt);
       break;
@@ -291,6 +322,7 @@ export function settleRound(game) {
   if (game.phase === 'FINISHED') {
     game.ranking = rankPlayers(game.players);
   }
+  ensureDailyReflection(game);
   addMessage(game, 'SYSTEM', `第 ${game.current_day} 天结算完成。详细投入仅对正式队员开放。`, null, 'settlement');
   return game;
 }

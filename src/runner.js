@@ -1,9 +1,10 @@
-import { applyAction, currentSpeaker } from './engine.js';
+import { applyAction, currentSpeaker, reflectionActors } from './engine.js';
 import { getObservation } from './observation.js';
 import { requestDecision, fallbackAction } from './agents.js';
 import { createPrivateChat } from './private-chat.js';
 import { randomUUID } from 'node:crypto';
 import { addDecisionDiagnostic, writeSubmissionLog } from './model-log.js';
+import { runDailyReflections } from './reflection.js';
 
 function pending(game) {
   if (['NEGOTIATION', 'VOTE_SPEECH'].includes(game.phase)) {
@@ -19,6 +20,7 @@ export function createRunner({ store, config, decision = requestDecision, random
   const running = new Map();
   const dirty = new Set();
   let closed = false;
+  const reflectionAbort = new AbortController();
   const privateChat = createPrivateChat({ store, config, decision, randomInt, now, onChange: id => { kick(id); } });
   async function pump(id) {
     for (let step = 0; step < 64; step++) {
@@ -26,6 +28,11 @@ export function createRunner({ store, config, decision = requestDecision, random
       if (!snapshot || closed) return;
       await privateChat.sync(snapshot);
       if (snapshot.phase === 'PRIVATE_CHAT') return;
+      if (reflectionActors(snapshot).length) {
+        await store.transact(id, game => { game.thinking = reflectionActors(game); game.version++; });
+        await runDailyReflections({ snapshot, store, config, decision, signal: reflectionAbort.signal, now });
+        continue;
+      }
       const actions = snapshot ? pending(snapshot) : [];
       if (!actions.length) return;
       await store.transact(id, game => { game.thinking = actions.map(a => a.id); game.version++; });
@@ -81,9 +88,9 @@ export function createRunner({ store, config, decision = requestDecision, random
     resume: async () => {
       await Promise.all((await store.listIds()).map(async id => {
         const game = await store.load(id);
-        if (game?.phase === 'PRIVATE_CHAT') kick(id);
+        if (game?.phase === 'PRIVATE_CHAT' || reflectionActors(game).length) kick(id);
       }));
     },
-    close: () => { closed = true; privateChat.close(); },
+    close: () => { closed = true; reflectionAbort.abort(); privateChat.close(); },
   };
 }

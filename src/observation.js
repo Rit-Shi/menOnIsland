@@ -56,6 +56,14 @@ export function getHumanView(game, now = Date.now) {
   const view = getObservation(game, 'P0', now);
   view.server_time = now();
   delete view.memories;
+  view.reflection_status = game.reflection_round?.day === game.current_day && ['ROUND_UPDATE','FINISHED'].includes(game.phase) ? {
+    day: game.current_day,
+    complete: IDS.slice(1).every(id => game.memories[id].reflections?.some(record => record.day === game.current_day)),
+    agents: Object.fromEntries(IDS.slice(1).map(id => {
+      const record = game.memories[id].reflections?.find(record => record.day === game.current_day);
+      return [id, record ? record.source === 'fallback' ? 'fallback' : 'completed' : 'pending'];
+    })),
+  } : null;
   view.thinking = game.phase === 'PRIVATE_CHAT' ? [] : game.thinking ?? [];
   view.diagnostics = ['ROUND_UPDATE', 'FINISHED'].includes(game.phase)
     ? game.diagnostics.filter(d => d.day === game.current_day).map(({ actor_id, model, code, phase, kind, attempt_count, recovered }) => ({ actor_id, model, code, phase, kind, attempt_count, recovered })) : [];

@@ -6,6 +6,26 @@ import { getObservation } from '../src/observation.js';
 import { requestDecision, parseDecision } from '../src/agents.js';
 import { loadConfig } from '../src/config.js';
 
+test('reflection JSON is corrected, bound to the current day and passed back without forging its source',async t=>{
+  let attempts=0;let invalid=false;const requests=[];
+  const gateway=createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;requests.push(JSON.parse(body));
+    const output=++attempts===1||invalid?{summary:'',lesson:'不完整'}:{day:99,source:'fallback',summary:'今天自己的选择没有拉开金币差距。',lesson:'共同获利不等于获胜。',next_plan:'评估有利于独占第一的合作条件。'};
+    res.end(JSON.stringify({choices:[{message:{content:JSON.stringify(output)}}]}));
+  });
+  await new Promise(resolve=>gateway.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>gateway.close(resolve)));
+  const game=createGame({id:'reflection-adapter',randomInt:()=>0});game.phase='ROUND_UPDATE';
+  game.round_results=[{day:1,public_gold_balances:{P0:12,P1:12,P2:12,P3:12},registrations:{P1:'A'},registration_status:{},settlements:{},net_changes:{P1:2},vote_results:[]}];
+  const cfg={baseUrl:`http://127.0.0.1:${gateway.address().port}/v1`,apiKey:'offline-test',models:{P1:'one'},timeoutMs:1000};
+  const result=await requestDecision(cfg,getObservation(game,'P1'),'reflect');
+  assert.equal(result.fallback,false);assert.equal(result.trace.attempt_count,2);
+  assert.equal(result.action.type,'reflect');assert.equal(result.action.day,1);assert.equal(result.action.source,undefined);
+  assert.equal(requests[1].messages.length,4);assert.ok(JSON.parse(requests[0].messages[1].content).round_results[0].my_net_change===2);
+  invalid=true;
+  const failed=await requestDecision(cfg,getObservation(game,'P1'),'reflect');
+  assert.equal(failed.fallback,true);assert.equal(failed.trace.attempt_count,3);
+  assert.equal(failed.action.type,'reflect');assert.match(failed.action.summary,/未能成功生成/);
+});
+
 test('parses model JSON with fences but rejects prose and arrays', () => {
   assert.deepEqual(parseDecision('```json\n{"amount":0}\n```'), { amount: 0 });
   assert.throws(() => parseDecision('抱歉我不能提供'), /JSON/);

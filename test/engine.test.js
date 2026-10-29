@@ -122,6 +122,7 @@ test('eight days finish with exact shared ranks and no ninth day', () => {
     advanceTime(game, () => game.private_chat.ends_at);
     ids.forEach(id => applyAction(game, id, { type: 'register', task_id: 'A' }, fixed));
     applyAction(game, 'P0', { type: 'lock_registration' }, fixed);
+    for (const actor of ['P1','P2','P3']) applyAction(game, actor, { type:'reflect', day:game.current_day, summary:'当天结果已回顾。', lesson:'共同获利不等于独自获胜。', next_plan:'重新评估可见差距。' });
     if (day < 8) applyAction(game, 'P0', { type: 'next_day' }, fixed);
   }
   assert.equal(game.phase, 'FINISHED');

@@ -1,6 +1,7 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { writeModelLog } from './model-log.js';
 import { setTimeout as delay } from 'node:timers/promises';
+import { REFLECTION_FIELD_LIMIT } from './engine.js';
 
 const PERSONALITIES = {
   P1: '你是林舟，温和的合作型。主动组织公平出资，重视公开承诺、长远信誉，但在成功希望很低时会选择 A。',
@@ -23,6 +24,7 @@ const FORMATS = {
   register: '秘密选择今天一个任务。JSON: {"task_id":"A或B或C"}。参考此前公共协商、私聊、公开本金和历史结果；重新评估时可参考自己先前选择。其他角色当前选择和各任务报名人数在统一公布前不可见，registration_submitted仅表示是否已提交。私聊阶段已结束，当前不能发送私聊。',
   vote: '秘密投出一张淘汰票。JSON: {"target_id":"一个其他当前候选人ID"}。不能投自己或已淘汰的人。',
   invest: '秘密提交个人投入。JSON: {"amount":非负整数}。可选范围是0到你的当前金币余额；可以低于、等于或高于门槛的人均份额，也可以使全队总投入超过门槛，成功奖金按实际总投入计算。自主权衡个人净收益与唯一获胜所需的金币差距，不要机械平均出资。可兑现或违背承诺，但任务失败会损失投入。',
+  reflect: '今天已结算，请对自己的决策做一次简洁、可供后续使用的私人复盘。只输出JSON：{"summary":"当天决策与可见结果的简要回顾","lesson":"最重要的教训或有效策略","next_plan":"后续策略调整"}，每个字段1至600字。根据你自己的公聊、参与的私聊、报名、淘汰、实际投入、获授权的结算、公开金币差距和已有私人反思，判断哪些选择有助于最终独自获胜。区分已知事实、他人承诺和你的推测；看不到的投入、私聊或动机不可编造。合作与信誉只是策略，唯一目标仍是赢。这里只需简明结论与行动建议，不要展开内部推理过程，不发送聊天、不改写已执行动作。反思会存入你自己的记忆；其他角色看不到。若是第8天，回顾最终胜负，next_plan用于以后对局，不存在第9天。',
 };
 function recipientChoices(observation) {
   return observation.players.filter(player => player.id !== observation.viewer_id).map(player => `${player.id}（${player.name}）`).join('、');
@@ -62,6 +64,7 @@ function decisionError(code, detail) {
 export function fallbackAction(observation, kind) {
   const id = observation.viewer_id;
   if (kind === 'private_chat') return { type: 'private_pass' };
+  if (kind === 'reflect') return { type: 'reflect', day: observation.current_day, summary: '本次模型反思未能成功生成。', lesson: '没有新增可验证的反思结论，不能将兜底记录当作真实复盘。', next_plan: '继续根据自己可见的结算、余额和过往记忆，独立评估有助于最终独自获胜的策略。' };
   if (kind === 'register') return { type: 'register', task_id: 'A' };
   if (kind === 'invest') return { type: 'invest', amount: 0 };
   if (kind === 'vote') {
@@ -74,6 +77,13 @@ function validateDecision(value, observation, kind) {
   const id = observation.viewer_id;
   const max = observation.players.find(p => p.id === id).gold;
   let action;
+  if (kind === 'reflect') {
+    if (!['ROUND_UPDATE','FINISHED'].includes(observation.phase) || !observation.round_results.some(result => result.day === observation.current_day)) throw decisionError('invalid_action', '只有当天结算后才能提交日终反思。');
+    const fields = ['summary','lesson','next_plan'];
+    if (fields.every(field => typeof value[field] === 'string' && value[field].trim().length > 0 && value[field].length <= REFLECTION_FIELD_LIMIT)) {
+      action = { type: 'reflect', day: observation.current_day, ...Object.fromEntries(fields.map(field => [field,value[field].trim()])) };
+    }
+  }
   if (kind === 'private_chat') {
     if (observation.phase !== 'PRIVATE_CHAT') throw decisionError('invalid_action', '当前不是PRIVATE_CHAT阶段，不能发送私聊。');
     if (!(observation.private_chat?.remaining_messages > 0)) throw decisionError('invalid_action', '你的今日私聊额度已用完，不能发送私聊。');
@@ -102,6 +112,7 @@ function validateDecision(value, observation, kind) {
       vote: `target_id必须是其他当前候选人的ID，可选：${(observation.vote_session?.candidate_ids ?? []).filter(other => other !== id).join('、')}。`,
       speech: 'message必须是1到1000字的非空文本。',
       private_chat: `只能在私聊阶段向其他角色发送1到1000字的非空文本，或输出{"pass":true}。当前剩余额度：${observation.private_chat?.remaining_messages ?? 0}。`,
+      reflect: `反思必须包含summary、lesson、next_plan三个非空字符串，每个不超过${REFLECTION_FIELD_LIMIT}字；只回顾自己可见的事实并给出简要策略调整。`,
     };
     throw decisionError('invalid_action', reasons[kind] || '输出不符合当前行动要求。');
   }

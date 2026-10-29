@@ -3,7 +3,7 @@ import { randomUUID, randomBytes, createHash, timingSafeEqual } from 'node:crypt
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
-import { createGame, applyAction, RuleError } from './src/engine.js';
+import { createGame, applyAction, ensureDailyReflection, RuleError } from './src/engine.js';
 import { getHumanView } from './src/observation.js';
 import { loadConfig } from './src/config.js';
 import { GameStore } from './src/store.js';
@@ -37,6 +37,11 @@ export function createApp({ config = loadConfig(), decision, randomInt, now = Da
     const game = await store.load(id);
     const tokenHash = hash(token);
     if (!game?.session_hash || game.session_hash.length !== tokenHash.length || !timingSafeEqual(Buffer.from(game.session_hash), Buffer.from(tokenHash))) throw new RuleError('游戏会话已失效', 401);
+    if (ensureDailyReflection(game)) {
+      const enrolled = await store.transact(id, current => { ensureDailyReflection(current); return current; });
+      runner.kick(id);
+      return enrolled;
+    }
     return game;
   }
   const server = createServer(async (request, response) => {

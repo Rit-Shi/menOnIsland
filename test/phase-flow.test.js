@@ -49,6 +49,7 @@ test('public phase history records rapid transitions in order without exposing h
   assert.ok(game.phase_events.every(e=>e.day===1));
   assert.deepEqual(getHumanView(game).phase_events,game.phase_events);
   assert.equal(getObservation(game,'P1').phase_events,undefined);
+  for (const actor of ['P1','P2','P3']) applyAction(game, actor, { type:'reflect', day:game.current_day, summary:'当天结果已回顾。', lesson:'共同获利不等于独自获胜。', next_plan:'重新评估可见差距。' });
   applyAction(game,'P0',{type:'next_day'},fixed);
   assert.equal(game.phase_events.at(-1).day,2);
   assert.equal(game.phase_events.at(-1).to,'NEGOTIATION');

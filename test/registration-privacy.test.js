@@ -50,6 +50,7 @@ test('previously revealed daily choices remain public while the new days choices
   const game = openRegistration();
   ids.forEach(id => applyAction(game, id, { type: 'register', task_id: 'A' }));
   applyAction(game, 'P0', { type: 'lock_registration' });
+  for (const actor of ['P1','P2','P3']) applyAction(game, actor, { type:'reflect', day:game.current_day, summary:'当天结果已回顾。', lesson:'共同获利不等于独自获胜。', next_plan:'重新评估可见差距。' });
   applyAction(game, 'P0', { type: 'next_day' }, () => 0);
   openRegistration(game);
   ids.forEach((id, i) => applyAction(game, id, { type: 'register', task_id: ['C', 'A', 'B', 'C'][i] }));
