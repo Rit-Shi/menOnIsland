@@ -33,3 +33,5 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - Gateway adapter: complete, 22 tests passing. Live gateway checks succeeded for P1 and P3; gateway models list confirms P2's requested deepseek-v4.0-flash is absent, deepseek-v4-flash is available. Awaiting user choice before changing P2's mapping.
 
 - Task 2 backend: complete. All 26 tests pass, including a full eight-day API playthrough, persisted-session recovery, authorization, CSRF and hidden-file access checks. Live models P1/P3 verified; P2 mapping decision remains pending.
+
+- Task 3 interface: implemented and browser-verified at desktop and 390px viewport widths; no horizontal overflow. Live B cooperation produced 12.50 balances from 5+5 investment. Public promise badges and private channels verified. All 28 tests pass, including end-to-end double B elimination and request deduplication. Integration polling now waits for the actual asynchronous settlement rather than a transient no-thinking snapshot. Final review pending.

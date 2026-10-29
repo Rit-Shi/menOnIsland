@@ -24,7 +24,8 @@ async function fixture(t, decision) {
   async function waitFor(phase) {
     for (let i = 0; i < 200; i++) {
       const response = await request('/api/state');
-      if (response.data.phase === phase && !response.data.thinking.length) return response.data;
+      const registered = phase !== 'REGISTRATION' || ['P1', 'P2', 'P3'].every(id => response.data.registrations[id]);
+      if (response.data.phase === phase && !response.data.thinking.length && registered) return response.data;
       await new Promise(resolve => setTimeout(resolve, 5));
     }
     throw new Error(`Timed out waiting for ${phase}`);
@@ -87,4 +88,48 @@ test('stored human session resumes in a fresh server process model', async t => 
   assert.equal(response.status, 200);
   assert.equal(restored.id, state.id);
   assert.deepEqual(restored.negotiation_order, ['P0', 'P1', 'P2', 'P3']);
+});
+
+test('oversubscribed B completes two vote rounds and hides pending agent investments', async t => {
+  const observations = [];
+  const f = await fixture(t, async (_config, observation, kind) => {
+    observations.push({ kind, observation });
+    const id = observation.viewer_id;
+    const target = observation.vote_session?.candidate_ids.includes('P3') ? (id === 'P3' ? 'P2' : 'P3') : (id === 'P1' ? 'P2' : 'P1');
+    const action = kind === 'speech' ? { type: 'speech', message: '留下我，我会合作。' }
+      : kind === 'register' ? { type: 'register', task_id: 'B' }
+      : kind === 'vote' ? { type: 'vote', target_id: target }
+      : { type: 'invest', amount: 5 };
+    return { action, privateMessages: [], fallback: false };
+  });
+  await f.request('/api/games', {});
+  await f.request('/api/action', { action: { type: 'speech', message: '都来 B' } });
+  await f.waitFor('REGISTRATION');
+  await f.request('/api/action', { action: { type: 'register', task_id: 'B' } });
+  await f.request('/api/action', { action: { type: 'lock_registration' } });
+  for (const target of ['P3', 'P2']) {
+    await f.waitFor('VOTE_SPEECH');
+    await f.request('/api/action', { action: { type: 'speech', message: '请留下我' } });
+    await f.waitFor('VOTE_SUBMISSION');
+    await f.request('/api/action', { action: { type: 'vote', target_id: target } });
+  }
+  const investing = await f.waitFor('INVESTMENT_SUBMISSION');
+  assert.equal(investing.my_investment, null);
+  assert.equal(investing.investments, undefined);
+  await f.request('/api/action', { action: { type: 'invest', amount: 5 } });
+  const final = await f.waitFor('ROUND_UPDATE');
+  assert.equal(final.phase, 'ROUND_UPDATE');
+  assert.equal(final.vote_results.length, 2);
+  assert.deepEqual(final.players.map(p => p.gold_units), [150, 150, 120, 120]);
+  assert.ok(observations.filter(o => o.kind === 'invest').every(o => o.observation.my_investment === null && !('investments' in o.observation)));
+});
+
+test('accepted request identifiers cannot cause duplicate private messages', async t => {
+  const f = await fixture(t);
+  await f.request('/api/games', {});
+  const body = { request_id: 'same-request', action: { type: 'private_message', to: 'P1', message: '只应出现一次' } };
+  await f.request('/api/action', body);
+  await f.request('/api/action', body);
+  const state = (await f.request('/api/state')).data;
+  assert.equal(state.messages.filter(m => m.text === '只应出现一次').length, 1);
 });
