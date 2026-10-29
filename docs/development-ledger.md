@@ -10,3 +10,13 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - Task 1: pending.
 - Task 2: pending.
 - Task 3: pending.
+
+## Remote repository setup
+
+- User selected `https://github.com/Rit-Shi/menOnIsland.git` as origin.
+- Fetched remote main at ad8d19b; its two commits include README, gameplay V3.6 and NPC personas V2.0.
+- Preserved the previous independent local root on backup/local-bootstrap-20261029.
+- Created codex/island-mvp from origin/main and carried the local baseline onto it as 88342b5.
+- Local main tracks origin/main; development uses codex/island-mvp.
+- Applied the confirmed negotiation/voting amendments to the repository's existing gameplay document; retained the supplied root design copy.
+- Gameplay implementation remains pending while repository setup is handled.
