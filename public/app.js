@@ -1,10 +1,12 @@
+import { stageInfo, islandMarkup, updateIslandScene } from './island-scene.js';
+
 const $ = selector => document.querySelector(selector);
 const root = $('#app');
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = gold => String(gold);
 const signed = gold => `${gold > 0 ? '+' : ''}${money(gold)}`;
 const names = { P0: '玩家', P1: '林舟', P2: '沈默', P3: '顾寒', SYSTEM: '岛屿广播' };
-const colors = { P0: '#d9bd86', P1: '#83bda8', P2: '#8da9c9', P3: '#c99a87' };
+const colors = { P0: '#bd8739', P1: '#3f876a', P2: '#557faa', P3: '#ac745e' };
 const labels = { NEGOTIATION: '公共协商', PRIVATE_CHAT: '私聊协商', REGISTRATION: '任务报名', VOTE_SPEECH: '淘汰前发言', VOTE_SUBMISSION: '秘密投票', INVESTMENT_SUBMISSION: '秘密投入', ROUND_UPDATE: '本日结算', FINISHED: '最终排名' };
 const taskNames = { A: '收集淡水', B: '搭建庇护所', C: '修复通讯塔' };
 const statusNames = { registered: '已报名', confirmed: '正式队员', insufficient_members: '人数不足', eliminated: '已被淘汰' };
@@ -15,6 +17,7 @@ let busy = false;
 let polling = false;
 let toastTimer;
 let serverClockOffset = 0;
+let announcedStage = '';
 const drafts = {};
 const privateSeconds = () => Math.max(0, Math.ceil(((game?.private_chat?.ends_at || 0) - Date.now() - serverClockOffset) / 1000));
 
@@ -73,25 +76,35 @@ async function newGame() {
   catch (error) { toast(error.message); }
   finally { busy = false; render(); }
 }
-function islandMap() {
-  const day = game?.current_day || 1;
-  return `<div class="island-scene">
-    <div class="scene-label"><span class="live-dot"></span>孤岛 · 北纬 18°<span class="scene-weather">${icon('sun', 15)}晴 · 第 ${day} 日</span></div>
-    <svg class="island-map" viewBox="0 0 760 260" role="img" aria-label="孤岛示意图，标有淡水、庇护所与通讯塔三个任务地点">
-      <defs><linearGradient id="land" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#527165"/><stop offset="1" stop-color="#294b43"/></linearGradient><radialGradient id="shore"><stop stop-color="#9baf8e"/><stop offset="1" stop-color="#718e77"/></radialGradient><pattern id="grid" width="38" height="38" patternUnits="userSpaceOnUse"><path d="M38 0H0v38" fill="none" stroke="#ffffff" stroke-opacity=".025"/></pattern><filter id="shadow"><feDropShadow dx="0" dy="9" stdDeviation="12" flood-opacity=".2"/></filter></defs>
-      <rect width="760" height="260" fill="url(#grid)"/>
-      <g fill="none" stroke="#60948f" opacity=".15"><path d="M120 170c-35-50 60-100 145-109s82-34 171-21 100 35 130 66 73 29 60 65-102 50-192 49-169 27-214 0-88-7-100-50Z"/><path d="M105 173c-34-67 63-117 153-127s90-35 186-22 105 37 136 70 82 37 62 81-110 59-203 59-172 27-225 0-96-11-109-61Z"/></g>
-      <path d="M164 169c-31-42 42-82 114-90s72-38 152-23 88 34 116 61 56 24 47 49-83 40-166 38-136 29-182 5-66-10-81-40Z" fill="url(#shore)" filter="url(#shadow)"/>
-      <path d="M183 161c-22-33 38-67 105-75s71-34 141-20 75 32 101 56 45 23 38 39-72 32-142 30-131 25-169 4-61-8-74-34Z" fill="url(#land)"/>
-      <g fill="#25463c" stroke="#73907b" stroke-opacity=".45"><path d="m332 113 16-39 16 39-11-5v15h-11v-15Z"/><path d="m365 98 12-29 13 29-9-4v13h-8V94Z"/><path d="m390 120 18-42 18 42-12-5v18h-12v-18Z"/><path d="m304 142 12-27 12 27-8-3v12h-8v-12Z"/><path d="m431 144 13-31 13 31-9-4v14h-9v-14Z"/></g>
-      <path d="M247 158q61 38 112 4t141-40" fill="none" stroke="#c2bc8a" stroke-width="1.4" stroke-dasharray="4 5" opacity=".7"/>
-      <path d="m285 137-15-15 16-18 13 14-4 14 10 12-8 13-18-4Z" fill="#72a2a1" opacity=".7"/>
-      <g class="map-location"><circle cx="246" cy="156" r="14" fill="#142c31" stroke="#8ebaaa"/><text x="246" y="161" text-anchor="middle" fill="#a8d2bf" font-size="12">A</text><path d="M230 163h-53l-13 18" stroke="#8ebaaa" opacity=".6" fill="none"/><text x="154" y="194" text-anchor="middle" fill="#b2cbc3" font-size="11">淡水源</text></g>
-      <g class="map-location"><circle cx="365" cy="170" r="14" fill="#243532" stroke="#d5bc88"/><text x="365" y="175" text-anchor="middle" fill="#e5cc9d" font-size="12">B</text><path d="M367 186v24" stroke="#d5bc88" opacity=".6"/><text x="367" y="226" text-anchor="middle" fill="#d7c8a7" font-size="11">庇护所</text></g>
-      <g class="map-location"><circle cx="505" cy="122" r="14" fill="#243532" stroke="#9baccc"/><text x="505" y="127" text-anchor="middle" fill="#bdcbe2" font-size="12">C</text><path d="M517 115h53l11-18" stroke="#9baccc" opacity=".6" fill="none"/><text x="594" y="87" text-anchor="middle" fill="#b9c7db" font-size="11">通讯塔</text></g>
-      <g transform="translate(692 47)" fill="none" stroke="#91aaa7" opacity=".5"><circle r="15"/><path d="M0-22v44m-22-22h44"/><path d="m0-10 4 10-4-2-4 2Z" fill="#91aaa7"/><text y="-27" text-anchor="middle" fill="#91aaa7" stroke="none" font-size="9">N</text></g>
-      <g fill="none" stroke="#87a9aa" opacity=".25"><path d="M45 90q8-5 16 0t16 0m-10 8q8-5 16 0t16 0M623 205q8-5 16 0t16 0m-7 9q8-5 16 0t16 0"/></g>
-    </svg><div class="scene-bottom"><span>四位幸存者，一座孤岛</span><span>ISLAND 01 / SURVIVAL ZONE</span></div></div>`;
+function islandMap() { return '<div id="scene-mount"></div>'; }
+function phaseGuide() {
+  if (!game) return '';
+  const stage = stageInfo(game);
+  const steps = ['公共协商','30秒私聊','秘密报名','组队 / 淘汰','秘密投入','本日结算'];
+  return `<section class="phase-guide" aria-label="今日游戏进程"><ol class="phase-route">${steps.map((label,index) => `<li class="${index === stage.step ? 'current' : index < stage.step ? 'done' : ''}" ${index === stage.step ? 'aria-current="step"' : ''}><span>${index < stage.step ? '✓' : String(index + 1).padStart(2,'0')}</span><b>${label}</b></li>`).join('')}</ol><div class="phase-current ${stage.needsAction ? 'needs-action' : ''}"><div class="phase-current-copy"><span class="stage-kicker">第 ${game.current_day} 天 · ${stage.needsAction ? '现在轮到你' : '正在进行'}</span><h2>${stage.title}${game.phase === 'PRIVATE_CHAT' ? `<small class="stage-countdown"><span data-private-countdown>${privateSeconds()}</span> 秒</small>` : ''}</h2><p>${esc(stage.hint)}</p></div><button class="stage-cta" data-action="focus-stage">${stage.actionLabel} ${icon('arrow',17)}</button></div></section>`;
+}
+function focusKey(element) {
+  if (!element) return '';
+  if (element.id) return 'id:' + element.id;
+  const region = ['island-scene','chat-tabs','private-chat-contacts','action-panel','phase-guide','topbar','tasks'].find(name => element.closest('.' + name)) || '';
+  if (element.dataset.action || element.dataset.channel) return [region,element.dataset.action,element.dataset.channel,element.dataset.task].join(':');
+  if (element.tagName === 'BUTTON' && element.closest('[data-form]')) return 'submit:' + element.closest('[data-form]').dataset.form;
+  return '';
+}
+const motionBehavior = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth';
+function focusStage() {
+  const stage = stageInfo(game);
+  if (stage.actionKind === 'public' || stage.actionKind === 'private') {
+    channel = stage.actionKind === 'public' ? 'public' : channel === 'public' ? 'P1' : channel;
+    render();
+    const field = $('#chat-input');
+    field.scrollIntoView({behavior:motionBehavior(),block:'center'});
+    if (!field.disabled) field.focus({preventScroll:true});
+    return;
+  }
+  const target = stage.actionKind === 'tasks' ? $('.tasks') : stage.actionKind === 'results' ? $('.ranking-card') || $('.settlement-card') : $('.action-panel');
+  target?.scrollIntoView({behavior:motionBehavior(),block:'center'});
+  target?.querySelector('input:not(:disabled), button:not(:disabled)')?.focus({preventScroll:true});
 }
 function roleCards() {
   const players = game?.players || Object.keys(colors).map(id => ({ id, name: names[id], gold: 10 }));
@@ -108,7 +121,7 @@ function taskCards() {
     const selected = game?.registrations.P0 === id;
     const selectable = game?.phase === 'REGISTRATION';
     const roster = selectable ? '报名保密 · 确认后公布' : members.length ? members.map(member => `<i style="color:${colors[member]}">${names[member]}</i>`).join(' · ') : '尚未报名';
-    return `<button class="task-card task-${id} ${selected ? 'selected' : ''}" data-action="register" data-task="${id}" ${!selectable || busy ? 'disabled' : ''} aria-pressed="${selected}"><div class="task-card-top"><span class="task-symbol">${icon(['water','shelter','radio'][i], 26)}</span><span class="task-kind">${['独立行动','双人合作','三人合作'][i]}</span><span class="task-letter">${id}</span></div><h3>${taskNames[id]}</h3><p class="task-desc">${['沿溪寻找淡水，稳妥地度过一天。','合力搭起屋檐，分担风雨与成本。','重启岛上信号，让合作创造更多。'][i]}</p><div class="task-metrics"><div><small>${id === 'A' ? '固定净收益' : '奖池倍率'}</small><strong>${['+2','×1.5','×2'][i]}<span>${id === 'A' ? '金币' : ''}</span></strong></div><div><small>${id === 'A' ? '投入要求' : '全队投入门槛'}</small><strong>${['0','10','30'][i]}<span>金币</span></strong></div></div><div class="task-footer"><span>${id === 'A' ? '不限人数' : `需要 ${i + 1} 人 · 平分后向上取整`}</span><span>${roster}</span></div>${selectable ? `<span class="select-task">${selected ? '✓ 已选择此任务' : '选择任务 ' + id}</span>` : ''}</button>`;
+    return `<div class="task-wrap" id="task-card-${id}" tabindex="-1" aria-label="任务 ${id}：${taskNames[id]}"><button class="task-card task-${id} ${selected ? 'selected' : ''}" data-action="register" data-task="${id}" ${!selectable || busy ? 'disabled' : ''} aria-pressed="${selected}"><div class="task-card-top"><span class="task-symbol">${icon(['water','shelter','radio'][i], 26)}</span><span class="task-kind">${['独立行动','双人合作','三人合作'][i]}</span><span class="task-letter">${id}</span></div><h3>${taskNames[id]}</h3><p class="task-desc">${['沿溪寻找淡水，稳妥地度过一天。','合力搭起屋檐，分担风雨与成本。','重启岛上信号，让合作创造更多。'][i]}</p><div class="task-metrics"><div><small>${id === 'A' ? '固定净收益' : '奖池倍率'}</small><strong>${['+2','×1.5','×2'][i]}<span>${id === 'A' ? '金币' : ''}</span></strong></div><div><small>${id === 'A' ? '投入要求' : '全队投入门槛'}</small><strong>${['0','10','30'][i]}<span>金币</span></strong></div></div><div class="task-footer"><span>${id === 'A' ? '不限人数' : `需要 ${i + 1} 人 · 平分后向上取整`}</span><span>${roster}</span></div>${selectable ? `<span class="select-task">${selected ? '✓ 已选择此任务' : '选择任务 ' + id}</span>` : ''}</button></div>`;
   }).join('');
 }
 function phaseAction() {
@@ -129,7 +142,10 @@ function phaseAction() {
   } else if (phase === 'VOTE_SUBMISSION') {
     if (!game.vote_session.candidate_ids.includes('P0')) content = `<p>你不在本轮候选人中。投票完成后，结果将统一公开。</p>${waiting}`;
     else if (game.my_vote) content = `<p>你的淘汰票已锁定，目标为${names[game.my_vote]}。其他人的选票仍然保密。</p>${waiting}`;
-    else content = `<form data-form="vote"><p>选择一名候选人淘汰。不能自投或弃票，提交后不可修改。</p><div class="vote-options">${game.vote_session.candidate_ids.filter(id => id !== 'P0').map(id => `<label><input type="radio" name="target" value="${id}" required>${avatar(id, true)}<span>${names[id]}</span></label>`).join('')}</div><button class="primary" ${busy ? 'disabled' : ''}>锁定秘密投票 ${icon('lock', 16)}</button></form>`;
+    else {
+      const key = `vote-${game.current_day}-${game.vote_session.task_id}-${game.vote_session.vote_round}`;
+      content = `<form data-form="vote"><p>选择一名候选人淘汰。不能自投或弃票，提交后不可修改。</p><div class="vote-options">${game.vote_session.candidate_ids.filter(id => id !== 'P0').map(id => `<label><input type="radio" data-draft="${key}" name="target" value="${id}" ${drafts[key] === id ? 'checked' : ''} required>${avatar(id, true)}<span>${names[id]}</span></label>`).join('')}</div><button class="primary" ${busy ? 'disabled' : ''}>锁定秘密投票 ${icon('lock', 16)}</button></form>`;
+    }
   } else if (phase === 'INVESTMENT_SUBMISSION') {
     const task = Object.keys(game.active_teams).find(id => game.active_teams[id].includes('P0'));
     if (!task) content = `<p>${game.registration_status.P0 === 'eliminated' ? '你已被淘汰，本日净收益为 0。' : game.registration_status.P0 === 'insufficient_members' ? '你的任务人数不足，本日无任务收入。' : '你的淡水任务将在当天统一结算，固定获得 2 金币。'} 多人队伍正在秘密投入。</p>${waiting}`;
@@ -185,7 +201,10 @@ function results() {
   return `${finished ? `<section class="ranking-card"><div class="section-heading"><h2>${icon('flag', 20)}最终排名</h2><span class="eyebrow">AFTER EIGHT DAYS</span></div><div class="statistics"><span>任务成功 <b>${game.players[0].statistics.success}</b> 次</span><span>任务失败 <b>${game.players[0].statistics.failure}</b> 次</span><span>投票淘汰 <b>${game.players[0].statistics.eliminated}</b> 次</span></div>${game.ranking.map(p => `<div class="ranking-row ${p.rank === 1 ? 'winner' : ''}"><span class="rank-number">${String(p.rank).padStart(2,'0')}</span>${avatar(p.id, true)}<span class="rank-name">${p.id === 'P0' ? '你' : p.name}${p.rank === 1 ? '<small>获胜者</small>' : ''}</span><strong>${money(p.gold)}<small>金币</small></strong></div>`).join('')}</section>` : ''}<section class="settlement-card"><div class="section-heading"><h2>你的第 ${latest.day} 天</h2><span class="subtle">${icon('lock', 13)}队内明细</span></div>${settlement(latest)}${game.diagnostics.length ? `<div class="fallback-notice">${game.diagnostics.map(diagnosticNotice).join(' ')}</div>` : ''}</section>${chart()}${game.round_results.length > 1 ? `<section class="history-card"><div class="section-heading"><h2>你的历史记录</h2><span class="subtle">仅展示你有权限查看的内容</span></div>${game.round_results.slice(0,-1).reverse().map(r => `<details><summary><span>第 ${r.day} 天 · ${taskNames[r.registrations.P0]}</span><span class="${r.my_net_change >= 0 ? 'positive' : 'negative'}">${signed(r.my_net_change)}</span></summary>${settlement(r)}</details>`).join('')}</section>` : ''}${game.vote_results.length ? `<section class="history-card"><div class="section-heading"><h2>公开投票记录</h2></div>${game.vote_results.map(v => `<details><summary><span>第 ${v.day} 天 · ${v.task_id} · 第 ${v.vote_round} 轮</span><span>${names[v.eliminated_id]}出局</span></summary><p class="subtle">${Object.entries(v.votes).map(([from,to]) => `${names[from]} → ${names[to]}`).join('；')}${v.tied_ids.length ? '。最高票平票，随机淘汰。' : ''}</p></details>`).join('')}</section>` : ''}`;
 }
 function render() {
+  const previousScene = $('#island-scene');
   const active = document.activeElement;
+  const activeKey = root.contains(active) ? focusKey(active) : '';
+  const focusedValue = active?.value;
   const focused = active?.dataset?.draft;
   const selection = focused && active.type !== 'number' ? [active.selectionStart, active.selectionEnd] : null;
   const feed = $('#chat-feed');
@@ -193,10 +212,24 @@ function render() {
   const oldScroll = feed?.scrollTop || 0;
   const pageScroll = window.scrollY;
   const day = game?.current_day || 1;
-  root.innerHTML = `<header class="topbar"><a class="brand" href="/">${icon('compass',34)}<span><b>孤岛协议</b><small>ISLAND PROTOCOL</small></span></a><div class="topbar-right"><span class="connection"><i class="${config.configured ? '' : 'offline'}"></i>${config.configured ? '模型网关已配置' : '模型网关未配置'}</span><button class="text-button" data-action="rules">游戏规则</button>${game ? '<button class="outline-button" data-action="new">新航程 ' + icon('arrow',14) + '</button>' : ''}</div></header><main><div class="page-intro"><div><span class="eyebrow">COOPERATION. TRUST. SURVIVAL.</span><h1>${game?.phase === 'FINISHED' ? '航程结束，故事留下。' : '欢迎来到孤岛。'}</h1><p>${game ? '财富有限，选择自由。你愿意把信任交给谁？' : '八天，四名幸存者。合作的收益，未必公平地属于每个人。'}</p></div><div class="day-progress"><div><span>生存日程</span><b>${String(day).padStart(2,'0')}<small>/ 08</small></b></div><div class="day-dots">${Array.from({ length: 8 },(_,i) => `<span class="${i + 1 === day ? 'current' : i + 1 < day ? 'done' : ''}">${i + 1}</span>`).join('')}</div></div></div><section class="roles" aria-label="幸存者资产">${roleCards()}</section><div class="game-grid"><div class="board"><section class="mission-area"><div class="section-heading"><h2>${icon('compass',20)}今日岛屿任务</h2><span class="phase-tag">${game ? labels[game.phase] : '等待登陆'}</span></div>${islandMap()}<div class="tasks">${taskCards()}</div></section>${phaseAction()}${results()}<footer class="board-footer"><span>合作创造财富，信任决定赢家。</span><span>ISLAND PROTOCOL · V0.1</span></footer></div>${chatPanel()}</div></main>`;
+  root.innerHTML = `<header class="topbar"><a class="brand" href="/">${icon('compass',34)}<span><b>孤岛协议</b><small>ISLAND PROTOCOL</small></span></a><div class="topbar-right"><span class="connection"><i class="${config.configured ? '' : 'offline'}"></i>${config.configured ? '模型网关已配置' : '模型网关未配置'}</span><button class="text-button" data-action="rules">游戏规则</button>${game ? '<button class="outline-button" data-action="new">新航程 ' + icon('arrow',14) + '</button>' : ''}</div></header><main><div class="page-intro"><div><span class="eyebrow">COOPERATION. TRUST. SURVIVAL.</span><h1>${game?.phase === 'FINISHED' ? '航程结束，故事留下。' : '欢迎来到孤岛。'}</h1><p>${game ? '财富有限，选择自由。你愿意把信任交给谁？' : '八天，四名幸存者。合作的收益，未必公平地属于每个人。'}</p></div><div class="day-progress"><div><span>生存日程</span><b>${String(day).padStart(2,'0')}<small>/ 08</small></b></div><div class="day-dots">${Array.from({ length: 8 },(_,i) => `<span class="${i + 1 === day ? 'current' : i + 1 < day ? 'done' : ''}">${i + 1}</span>`).join('')}</div></div></div>${phaseGuide()}<section class="roles" aria-label="幸存者资产">${roleCards()}</section><div class="game-grid"><div class="board"><section class="mission-area"><div class="section-heading"><h2>${icon('compass',20)}今日岛屿任务</h2><span class="phase-tag">${game ? labels[game.phase] : '等待登陆'}</span></div>${islandMap()}<div class="tasks">${taskCards()}</div></section>${phaseAction()}${results()}<footer class="board-footer"><span>合作创造财富，信任决定赢家。</span><span>ISLAND PROTOCOL · V0.1</span></footer></div>${chatPanel()}</div></main>`;
+  const mount = $('#scene-mount');
+  if (previousScene && previousScene.dataset.sceneKey === (game?.id || 'preview')) mount.replaceWith(previousScene);
+  else mount.outerHTML = islandMarkup();
+  updateIslandScene($('#island-scene'), game);
   if (focused) {
-    const next = [...document.querySelectorAll('[data-draft]')].find(el => el.dataset.draft === focused);
+    const next = [...document.querySelectorAll('[data-draft]')].find(el => el.dataset.draft === focused && (el.type !== 'radio' || el.value === focusedValue));
     if (next && !next.disabled) { next.focus({ preventScroll: true }); if (selection && next.setSelectionRange) { try { next.setSelectionRange(...selection); } catch {} } }
+  }
+  if (!focused && activeKey) {
+    const nextFocus = [...root.querySelectorAll('button,[id]')].find(element => focusKey(element) === activeKey);
+    if (nextFocus && !nextFocus.disabled) nextFocus.focus({preventScroll:true});
+  }
+  const stage = stageInfo(game);
+  const announcementKey = game ? [game.id,game.current_day,game.phase,game.vote_session?.vote_round || 0,stage.needsAction].join(':') : '';
+  if (announcementKey !== announcedStage) {
+    announcedStage = announcementKey;
+    $('#phase-announcement').textContent = game ? '第 ' + game.current_day + ' 天，' + stage.title + '。' + stage.hint : '';
   }
   const nextFeed = $('#chat-feed');
   if (nextFeed) nextFeed.scrollTop = nearBottom ? nextFeed.scrollHeight : oldScroll;
@@ -210,7 +243,16 @@ root.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const kind = button.dataset.action;
-  if (kind === 'new') newGame();
+  if (kind === 'focus-stage') focusStage();
+  else if (kind === 'map-task') {
+    if (game?.phase === 'REGISTRATION') action({type:'register',task_id:button.dataset.task});
+    else {
+      const card = document.getElementById('task-card-' + button.dataset.task);
+      card?.scrollIntoView({behavior:motionBehavior(),block:'center'});
+      card?.focus({preventScroll:true});
+    }
+  }
+  else if (kind === 'new') newGame();
   else if (kind === 'register') action({ type: 'register', task_id: button.dataset.task });
   else if (kind === 'lock') action({ type: 'lock_registration' });
   else if (kind === 'reconsider') action({ type: 'reconsider_registrations' });
