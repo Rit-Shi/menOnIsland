@@ -24,11 +24,6 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
     const controller = new AbortController();
     const seen = inboxCount(snapshot, actor);
     const task = (async () => {
-      await store.transact(snapshot.id, game => {
-        if (game.phase !== 'PRIVATE_CHAT' || game.current_day !== snapshot.current_day || now() >= game.private_chat.ends_at) return;
-        game.thinking = [...new Set([...game.thinking, actor])];
-        game.version++;
-      });
       if (controller.signal.aborted || closed) return;
       const observation = getObservation(snapshot, actor, now);
       const remaining = snapshot.private_chat.ends_at - now();
@@ -65,7 +60,6 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
         }
         if (result.fallback) game.diagnostics.push({ day: game.current_day, actor_id: actor, model: result.model || config.models[actor], code: result.code });
         game.thinking = game.thinking.filter(id => id !== actor);
-        game.version++;
       });
     })().catch(() => {}).finally(() => {
       session.jobs.delete(actor);

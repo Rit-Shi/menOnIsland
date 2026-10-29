@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as engine from '../src/engine.js';
-import { getObservation } from '../src/observation.js';
+import { getObservation, getHumanView } from '../src/observation.js';
 
 const ids = ['P0', 'P1', 'P2', 'P3'];
 function privateGame() {
@@ -72,4 +72,17 @@ test('observations expose only the viewers quota and visible private messages', 
   const outsider = getObservation(game, 'P0', () => 2000);
   assert.equal(outsider.private_chat.remaining_messages, 5);
   assert.ok(!JSON.stringify(outsider).includes('秘密计划'));
+});
+
+test('hidden private messages and private thinking do not change an outsiders observable state', () => {
+  const game = privateGame();
+  const now = () => 2000;
+  const humanBefore = getHumanView(game, now);
+  const agentBefore = getObservation(game, 'P3', now);
+  engine.applyAction(game, 'P1', { type: 'private_message', to: 'P2', message: '隐蔽协商' }, () => 0, now);
+  game.thinking = ['P2'];
+  assert.deepEqual(getHumanView(game, now), humanBefore);
+  assert.deepEqual(getObservation(game, 'P3', now), agentBefore);
+  engine.advanceTime(game, () => 31000);
+  assert.match(game.messages.at(-1).id, /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
 });

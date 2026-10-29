@@ -47,9 +47,10 @@ async function api(path, body) {
 }
 function accept(next) {
   if (game && game.id === next.id && next.version < game.version) return;
+  if (game && game.id === next.id && next.version === game.version && next.messages.length < game.messages.length) return;
   if (next.server_time != null) serverClockOffset = next.server_time - Date.now();
   if (next.phase === 'PRIVATE_CHAT' && game?.phase !== 'PRIVATE_CHAT' && channel === 'public') channel = 'P1';
-  const changed = !game || game.id !== next.id || game.version !== next.version;
+  const changed = !game || game.id !== next.id || game.version !== next.version || game.messages.length !== next.messages.length;
   game = next;
   if (changed) render();
 }
@@ -59,7 +60,7 @@ async function action(value) {
   render();
   try {
     const next = await api('/api/action', { action: value, expected_day: game.current_day, request_id: crypto.randomUUID() });
-    game = next;
+    accept(next);
     if (value.type === 'speech') drafts[`speech-${game.current_day}`] = '';
     if (value.type === 'private_message') drafts[`private-${value.to}`] = '';
   } catch (error) { toast(error.message); }
@@ -117,7 +118,7 @@ function phaseAction() {
   const waiting = `<div class="waiting"><span class="pulse-ring"></span><span>${thinking ? `${esc(thinking)}正在思考…` : '等待其他角色完成行动…'}</span></div>`;
   let content = '';
   if (['NEGOTIATION','VOTE_SPEECH'].includes(phase)) {
-    content = game.current_speaker === 'P0' ? `<p>轮到你了。可以提出组队方案、承诺投入，或回应其他幸存者。</p><button class="primary" data-action="focus-public">前往公共频道发言 ${icon('arrow', 17)}</button>` : `<p>当前由${names[game.current_speaker]}发言。公共协商结束后将开启 30 秒私聊。</p>${waiting}`;
+    content = game.current_speaker === 'P0' ? `<p>轮到你了。可以提出组队方案、承诺投入，或回应其他幸存者。</p><button class="primary" data-action="focus-public">前往公共频道发言 ${icon('arrow', 17)}</button>` : `<p>当前由${names[game.current_speaker]}发言。${phase === 'NEGOTIATION' ? '公共协商结束后将开启 30 秒私聊。' : '本轮候选人发言结束后将进行秘密投票。'}</p>${waiting}`;
   } else if (phase === 'PRIVATE_CHAT') {
     content = `<div class="private-chat-status"><strong><span data-private-countdown>${privateSeconds()}</span><small> 秒</small></strong><span>你今天还可发送 <b>${game.private_chat.remaining_messages}</b> / 5 条私聊</span></div><p>现在可以自由私聊谈判，Agent 也会主动联系或回复。跨所有对象合计最多发送 5 条，回复同样计次；倒计时结束后自动进入报名。</p><div class="private-chat-contacts">${['P1','P2','P3'].map(id => `<button class="outline-button" data-channel="${id}">${icon('chat', 15)} 私聊${names[id]}</button>`).join('')}</div>`;
   } else if (phase === 'REGISTRATION') {

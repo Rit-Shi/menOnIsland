@@ -68,10 +68,10 @@ export function createRunner({ store, config, decision = requestDecision, random
       do { await Promise.all([...running.values()]); await privateChat.idle(); } while (running.size || privateChat.isBusy());
     },
     resume: async () => {
-      for (const id of await store.listIds()) {
+      await Promise.all((await store.listIds()).map(async id => {
         const game = await store.load(id);
-        if (game?.phase === 'PRIVATE_CHAT') await kick(id);
-      }
+        if (game?.phase === 'PRIVATE_CHAT') kick(id);
+      }));
     },
     close: () => { closed = true; privateChat.close(); },
   };

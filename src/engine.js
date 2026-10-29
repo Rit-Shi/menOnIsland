@@ -1,4 +1,4 @@
-import { randomInt as secureRandomInt } from 'node:crypto';
+import { randomInt as secureRandomInt, randomUUID } from 'node:crypto';
 
 export const IDS = ['P0', 'P1', 'P2', 'P3'];
 export const PRIVATE_CHAT_DURATION_MS = 30000;
@@ -52,7 +52,7 @@ function startDay(game, randomInt) {
   addMessage(game, 'SYSTEM', `第 ${game.current_day} 天开始。公共协商从${player(game, game.negotiation_order[0]).name}开始，依次发言。`);
 }
 export function addMessage(game, from, text, to = null, kind = 'chat') {
-  const message = { id: `${game.id}-${game.messages.length + 1}`, day: game.current_day, from, to, text, kind, at: new Date().toISOString() };
+  const message = { id: randomUUID(), day: game.current_day, from, to, text, kind, at: new Date().toISOString() };
   game.messages.push(message);
   return message;
 }
@@ -213,7 +213,8 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt, 
     }
     default: throw new RuleError('未知行动类型', 400);
   }
-  game.version++;
+  // A shared public revision must not reveal hidden private traffic to other viewers.
+  if (!['private_message', 'private_pass'].includes(action.type)) game.version++;
   return game;
 }
 function updateMemories(game, settlements) {

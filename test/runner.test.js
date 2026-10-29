@@ -149,3 +149,39 @@ test('server deadline timer advances private chat without browser polling or ano
   await f.runner.idle();
   assert.equal(game.phase, 'REGISTRATION');
 });
+
+test('a slow expired save does not delay recovery or deadline timers of another saved game', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let releaseSlow;
+  const f = await fixture(t, async (_config, observation, kind) => {
+    if (kind === 'private_chat') return pass;
+    if (observation.id === 'runner' && observation.viewer_id === 'P1') return new Promise(resolve => { releaseSlow = resolve; });
+    return { action: { type: 'register', task_id: 'A' }, fallback: false };
+  });
+  const second = createGame({ id: 'second', randomInt: () => 0 });
+  ids.forEach(id => applyAction(second, id, { type: 'speech', message: '第二局协商' }, () => 0, () => 40000));
+  await f.store.save(second);
+  f.setTime(50000);
+  const recovery = f.runner.resume();
+  try {
+    let restored;
+    const timeout = performance.now() + 1500;
+    do {
+      await new Promise(resolve => setImmediate(resolve));
+      restored = await f.store.load('second');
+    } while (restored.private_chat.agent_last_seen.P1 == null && performance.now() < timeout);
+    assert.equal(restored.private_chat.agent_last_seen.P1, 0);
+    assert.equal(restored.private_chat.ends_at, 70000);
+    f.setTime(70000);
+    t.mock.timers.tick(20000);
+    const expires = performance.now() + 1500;
+    do {
+      await new Promise(resolve => setImmediate(resolve));
+      restored = await f.store.load('second');
+    } while (restored.phase === 'PRIVATE_CHAT' && performance.now() < expires);
+    assert.equal(restored.phase, 'REGISTRATION');
+  } finally {
+    releaseSlow?.({ action: { type: 'register', task_id: 'A' }, fallback: false });
+    await recovery;
+  }
+});
