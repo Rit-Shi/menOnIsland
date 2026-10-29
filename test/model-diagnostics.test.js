@@ -413,3 +413,76 @@ test('blocked submission logs cannot delay opening and expiring the private phas
   assert.equal(current.private_chat.ends_at, 31000);
   assert.deepEqual(current.registrations, { P1: 'A', P2: 'A', P3: 'A' });
 });
+
+test('an empty optional promise means no promise and never forces a corrective commitment', async t => {
+  for (const promise of [{}, undefined, null]) {
+    const f = await fixture(t, (_req, res) => reply(res, JSON.stringify({ message: '我今天先观察大家的意向。', ...(promise === undefined ? {} : { promise }) })));
+    const game = createGame({ id: f.game.id, randomInt: () => 2 });
+    const result = await requestDecision(f.config, getObservation(game, 'P2'), 'speech');
+    assert.equal(result.fallback, false);
+    assert.equal(f.requests.length, 1);
+    assert.equal(result.action.promise, undefined);
+    assert.deepEqual(result.trace.error_codes, []);
+    applyAction(game, 'P2', result.action);
+    assert.equal(game.promises.length, 0);
+    assert.match(f.requests[0].messages[0].content, /没有承诺.*省略promise/);
+  }
+});
+
+test('a unique private recipient name is normalized to its ID without retry or changing visibility', async t => {
+  const f = await fixture(t, (_req, res) => reply(res, '{"to":"顾寒","message":"仅收发双方可见的本地测试消息","remaining_messages":4}'));
+  f.game.phase = 'PRIVATE_CHAT';
+  const result = await requestDecision(f.config, getObservation(f.game, 'P2'), 'private_chat');
+  assert.equal(result.fallback, false);
+  assert.equal(f.requests.length, 1);
+  assert.equal(result.action.to, 'P3');
+  assert.deepEqual(result.trace.error_codes, []);
+  applyAction(f.game, 'P2', result.action);
+  assert.equal(privateMessagesSent(f.game, 'P2'), 1);
+  assert.ok(getObservation(f.game, 'P3').messages.some(message => message.text === result.action.message));
+  for (const id of ['P0', 'P1']) assert.ok(!getObservation(f.game, id).messages.some(message => message.text === result.action.message));
+  const system = f.requests[0].messages[0].content;
+  assert.match(system, /to必须填写角色ID/);
+  assert.match(system, /P3（顾寒）/);
+  const attempt = (await f.logs()).find(record => record.event === 'model_attempt');
+  assert.equal(JSON.parse(attempt.response.content).to, '顾寒');
+});
+
+test('unknown recipient feedback pinpoints to and lists the legal ID/name mapping', async t => {
+  const f = await fixture(t, (_req, res, count) => reply(res, JSON.stringify({ to: count === 1 ? '不存在的角色' : 'P3', message: '本地测试消息' })));
+  f.game.phase = 'PRIVATE_CHAT';
+  const result = await requestDecision(f.config, getObservation(f.game, 'P2'), 'private_chat');
+  assert.equal(result.fallback, false);
+  const feedback = f.requests[1].messages.at(-1).content;
+  assert.match(feedback, /to.*不存在的角色/);
+  assert.match(feedback, /P0（P0）/);
+  assert.match(feedback, /P1（林舟）/);
+  assert.match(feedback, /P3（顾寒）/);
+});
+
+test('ambiguous recipient names are rejected instead of guessing and private IDs take precedence', async t => {
+  const f = await fixture(t, (_req, res) => reply(res, '{"to":"顾寒","message":"不能猜收件人"}'));
+  f.game.phase = 'PRIVATE_CHAT';
+  f.game.players.find(player => player.id === 'P1').name = '顾寒';
+  const result = await requestDecision(f.config, getObservation(f.game, 'P2'), 'private_chat');
+  assert.equal(result.fallback, true);
+  assert.deepEqual(result.action, { type: 'private_pass' });
+  assert.match((await f.logs()).find(record => record.event === 'model_attempt').error_detail, /不唯一/);
+  const canonical = await fixture(t, (_req, res) => reply(res, '{"to":"P3","message":"明确指定角色ID"}'));
+  canonical.game.phase = 'PRIVATE_CHAT';
+  canonical.game.players.find(player => player.id === 'P1').name = 'P3';
+  const accepted = await requestDecision(canonical.config, getObservation(canonical.game, 'P2'), 'private_chat');
+  assert.equal(accepted.fallback, false);
+  assert.equal(accepted.action.to, 'P3');
+});
+
+test('self-addressed and empty private messages receive different field-specific errors', async t => {
+  for (const output of [{ to: '沈默', message: '不能发给自己' }, { to: 'P3', message: '' }]) {
+    const f = await fixture(t, (_req, res) => reply(res, JSON.stringify(output)));
+    f.game.phase = 'PRIVATE_CHAT';
+    const result = await requestDecision(f.config, getObservation(f.game, 'P2'), 'private_chat');
+    assert.equal(result.fallback, true);
+    const first = (await f.logs()).find(record => record.event === 'model_attempt');
+    assert.match(first.error_detail, output.message ? /不能给自己/ : /message.*非空/);
+  }
+});
