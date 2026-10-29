@@ -25,7 +25,7 @@ export function parseDecision(text) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid_JSON');
   return value;
 }
-function fallbackAction(observation, kind) {
+export function fallbackAction(observation, kind) {
   const id = observation.viewer_id;
   if (kind === 'register') return { type: 'register', task_id: 'A' };
   if (kind === 'invest') return { type: 'invest', amount: 0 };

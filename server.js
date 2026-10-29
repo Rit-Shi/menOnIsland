@@ -1,0 +1,104 @@
+import { createServer } from 'node:http';
+import { randomUUID, randomBytes, createHash, timingSafeEqual } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import { createGame, applyAction, RuleError } from './src/engine.js';
+import { getHumanView } from './src/observation.js';
+import { loadConfig } from './src/config.js';
+import { GameStore } from './src/store.js';
+import { createRunner } from './src/runner.js';
+
+const root = dirname(fileURLToPath(import.meta.url));
+const hash = value => createHash('sha256').update(value).digest('hex');
+function json(response, status, value, headers = {}) {
+  response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers });
+  response.end(JSON.stringify(value));
+}
+async function readBody(request) {
+  if (!request.headers['content-type']?.startsWith('application/json')) throw new RuleError('需要 JSON 请求', 415);
+  let body = '';
+  for await (const chunk of request) {
+    body += chunk;
+    if (Buffer.byteLength(body) > 16384) throw new RuleError('请求过大', 413);
+  }
+  try { return JSON.parse(body || '{}'); } catch { throw new RuleError('JSON 格式错误', 400); }
+}
+export function createApp({ config = loadConfig(), decision, randomInt } = {}) {
+  const store = new GameStore(config.dataDir);
+  const runner = createRunner({ store, config, decision, randomInt });
+  async function authenticate(request) {
+    const cookie = request.headers.cookie?.split(';').map(s => s.trim()).find(s => s.startsWith('island_session='))?.slice(15);
+    if (!cookie || !/^[a-f0-9-]{36}\.[a-f0-9]{64}$/.test(cookie)) throw new RuleError('请开始一局新游戏', 401);
+    const [id, token] = cookie.split('.');
+    const game = await store.load(id);
+    const tokenHash = hash(token);
+    if (!game?.session_hash || game.session_hash.length !== tokenHash.length || !timingSafeEqual(Buffer.from(game.session_hash), Buffer.from(tokenHash))) throw new RuleError('游戏会话已失效', 401);
+    return game;
+  }
+  const server = createServer(async (request, response) => {
+    try {
+      const url = new URL(request.url, `http://${request.headers.host}`);
+      if (request.method === 'POST') {
+        const origin = request.headers.origin;
+        if (origin && origin !== `http://${request.headers.host}` && origin !== `https://${request.headers.host}`) throw new RuleError('拒绝跨站请求', 403);
+      }
+      if (request.method === 'GET' && url.pathname === '/api/config') return json(response, 200, config.publicConfig);
+      if (request.method === 'POST' && url.pathname === '/api/games') {
+        await readBody(request);
+        const id = randomUUID();
+        const token = randomBytes(32).toString('hex');
+        const game = createGame({ id, randomInt });
+        game.session_hash = hash(token);
+        await store.save(game);
+        json(response, 201, getHumanView(game), { 'Set-Cookie': `island_session=${id}.${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000` });
+        runner.kick(id);
+        return;
+      }
+      if (request.method === 'GET' && url.pathname === '/api/state') {
+        const game = await authenticate(request);
+        json(response, 200, getHumanView(game));
+        runner.kick(game.id);
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/api/action') {
+        const session = await authenticate(request);
+        const body = await readBody(request);
+        if (body.actor_id && body.actor_id !== 'P0') throw new RuleError('只能操作人类玩家', 403);
+        const game = await store.transact(session.id, game => {
+          if (body.expected_day != null && body.expected_day !== game.current_day) throw new RuleError('页面状态已过期，请重试');
+          if (body.request_id && game.accepted_requests?.includes(body.request_id)) return game;
+          if (body.action?.type === 'lock_registration' && game.thinking?.length) throw new RuleError('请等待 Agent 完成报名');
+          applyAction(game, 'P0', body.action, randomInt);
+          if (typeof body.request_id === 'string' && body.request_id.length <= 100) game.accepted_requests = [...(game.accepted_requests ?? []), body.request_id].slice(-100);
+          return game;
+        });
+        json(response, 200, getHumanView(game));
+        runner.kick(game.id);
+        return;
+      }
+      const staticFiles = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
+      if (request.method === 'GET' && staticFiles[url.pathname]) {
+        const [file, type] = staticFiles[url.pathname];
+        const content = await readFile(join(root, 'public', file));
+        response.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'", 'Referrer-Policy': 'same-origin' });
+        return response.end(content);
+      }
+      return json(response, 404, { error: '页面或接口不存在' });
+    } catch (error) {
+      if (error instanceof RuleError) return json(response, error.status, { error: error.message });
+      if (error.code === 'ENOENT') return json(response, 404, { error: '页面尚未就绪' });
+      console.error(`[server] ${error.code || error.name}`);
+      if (!response.headersSent) json(response, 500, { error: '服务暂时异常，请稍后重试' });
+      else response.end();
+    }
+  });
+  return { server, store, idle: runner.idle };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const config = loadConfig();
+  const app = createApp({ config });
+  app.server.listen(config.port, config.host, () => console.log(`孤岛协议已启动：http://${config.host}:${config.port}`));
+  app.server.on('error', error => { console.error(`启动失败：${error.code}`); process.exitCode = 1; });
+}
