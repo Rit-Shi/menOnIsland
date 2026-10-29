@@ -20,10 +20,10 @@
 - [x] Write failing observation and scheduler regressions, including alternative hidden assignments with identical visible state.
 - [x] Add `registration_submitted`, filter `registrations` by viewer until lock, update Agent instructions and reassessment wording.
 - [x] Verify real API GET/POST/restart behavior and old regression suite: 63 tests pass.
-- [ ] Commit backend module after verification.
+- [x] Commit backend module after verification.
 
 ### Task 2: Interface and acceptance
 
-- [ ] Hide task-card rosters/counts during selection; show submitted status separately and own choice; confirmation button explicitly publishes.
+- [x] Hide task-card rosters/counts during selection; show submitted status separately and own choice; confirmation button explicitly publishes.
 - [ ] Update rules and documentation, verify offline browser selection/reload/reveal and restart main service preserving saved progress.
 - [ ] Commit interface, request independent review, address material findings with regression tests and record final verification.

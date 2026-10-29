@@ -90,3 +90,11 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - Shared model prompt now describes four independent Agents and removes human-specific language. Agent observations omit all `is_human` flags, use neutral P0 display names in player lists/rankings, and neutralize controller labels in SYSTEM-authored history, including existing saved messages.
 - P0's human-facing view, raw saves and server authorization retain the actual controller identity. Role-authored public/private messages remain verbatim; this change removes system disclosure rather than rewriting negotiations or promises.
 - Regression tests RED (3 expected failures) → GREEN. Full offline suite 58/58 passes; actual local gateway request capture checks all five action types for each of P1/P2/P3 (15 requests), plus legacy SYSTEM history, final ranking labels, source immutability and preserved human interface fields. No live provider requests or real-game actions are needed.
+
+## Secret task registration
+
+- Plan: `docs/superpowers/plans/2026-10-29-secret-registration.md`. User requested hiding other roles' actual task choices from humans and Agents during selection, revealing them together after final confirmation.
+- Backend committed as `2c99e2f`. Current REGISTRATION observations include only the viewer's task plus a public boolean `registration_submitted` map. All-submitted remains secret until lock; later phases expose the published full assignment. Previous-day published history stays visible; raw saved choices are preserved.
+- Initial and reconsidered model requests use this same filtered view. Prompts explain submission readiness is not a task choice and task rosters/counts are unavailable until reveal. Reassessment can use own previous choice and negotiation history.
+- Observation/scheduler tests reproduced four RED failures before implementation. Full suite now 63/63 GREEN, including GET/POST secrecy, persisted-session restoration, own-choice reassessment, identical observations under alternative hidden choices, and reveal before normal team/vote processing.
+- Interface uses submission readiness rather than hidden task values to enable confirmation; task cards hide all rosters/counts during selection and show a secrecy notice. Confirmation explicitly publishes choices. Offline browser acceptance and independent review pending.
