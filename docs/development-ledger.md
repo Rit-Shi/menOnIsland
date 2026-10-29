@@ -100,3 +100,8 @@ Plan: docs/superpowers/plans/2026-10-29-island-mvp.md
 - Interface uses submission readiness rather than hidden task values to enable confirmation; task cards hide all rosters/counts during selection and show a secrecy notice. Confirmation explicitly publishes choices; module committed as `8eee358`.
 - Offline browser acceptance: A/B/C actual choices remained absent from task-card rosters before final confirmation; only own B choice and per-role submitted status appeared. Reload retained secrecy. Confirmation revealed B=P0/P1, C=P2, A=P3 together and entered investment normally. No horizontal overflow, live provider calls or real-game actions during QA.
 - Independent read-only review (gpt-6-astra/high) approved with no findings; independently passed all 63 tests, checked all 81 full task assignments (324 observation equivalence comparisons), and all 81 assignments with absent legacy revision fields. Public readiness/activity and previously revealed history/negotiation claims are intentional; raw legacy choices require no migration because submission flags are derived.
+
+## Simplified Agent rounding instruction
+
+- User requested removing payout examples from the model prompt after Agents incorrectly claimed C contributions of 10 each would net 11. Replaced the detailed rounding formula and examples with “所有金币字段直接表示整数金币。金币除不尽时向上取整。”
+- Settlement logic and existing chat history are unchanged. All 63 offline tests pass.
