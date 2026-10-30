@@ -87,6 +87,21 @@ test('auto creation validates selected persona, rejects observer actions and sto
   assert.equal((await f.app.store.load(untouched.id)).automation_status, 'running');
 });
 
+test('concurrent new-game requests from one session create only one running successor', async t => {
+  const f = await fixture(t);
+  const parent = (await f.request('/api/games', {})).data;
+  const results = await Promise.all([
+    f.request('/api/games', { play_mode: 'auto', proxy_npc_id: 'NPC-05' }),
+    f.request('/api/games', { play_mode: 'auto', proxy_npc_id: 'NPC-07' }),
+  ]);
+  assert.deepEqual(results.map(r => r.status).sort(), [201, 409]);
+  const saved = await Promise.all((await f.app.store.listIds()).map(id => f.app.store.load(id)));
+  const active = saved.filter(game => game.play_mode === 'auto' && game.automation_status === 'running');
+  assert.equal(active.length, 1);
+  assert.equal(saved.length, 2);
+  assert.equal((await f.app.store.load(parent.id)).replacement_game_id, active[0].id);
+});
+
 test('private API stays paused before the player starts and duplicate requests do not extend its timer', async t => {
   let privateCalls=0;
   const f=await fixture(t,async (_config,_view,kind)=>{

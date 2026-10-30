@@ -30,6 +30,14 @@ async function readBody(request) {
 export function createApp({ config = loadConfig(), decision, randomInt, now = Date.now } = {}) {
   const store = new GameStore(config.dataDir);
   const runner = createRunner({ store, config, decision, randomInt, now });
+  const creations = new Map();
+  async function serializeCreation(key, operation) {
+    const previous = creations.get(key) || Promise.resolve();
+    const next = previous.catch(() => {}).then(operation);
+    creations.set(key, next);
+    try { return await next; }
+    finally { if (creations.get(key) === next) creations.delete(key); }
+  }
   async function authenticate(request, { enroll = true } = {}) {
     const cookie = request.headers.cookie?.split(';').map(s => s.trim()).find(s => s.startsWith('island_session='))?.slice(15);
     if (!cookie || !/^[a-f0-9-]{36}\.[a-f0-9]{64}$/.test(cookie)) throw new RuleError('请开始一局新游戏', 401);
@@ -61,11 +69,27 @@ export function createApp({ config = loadConfig(), decision, randomInt, now = Da
         try { previous = await authenticate(request, { enroll: false }); }
         catch (error) { if (!(error instanceof RuleError) || error.status !== 401) throw error; }
         game.session_hash = hash(token);
-        await store.save(game);
-        if (previous?.play_mode === 'auto' && previous.automation_status !== 'stopped') {
-          await store.transact(previous.id, old => { old.automation_status = 'stopped'; old.thinking = []; old.version++; });
-          runner.cancel(previous.id);
-        }
+        if (game.play_mode === 'auto') game.automation_status = 'pending';
+        await serializeCreation(previous?.id || id, async () => {
+          if (previous) {
+            await store.transact(previous.id, async old => {
+              if (old.replacement_game_id) {
+                const replacement = await store.load(old.replacement_game_id);
+                if (replacement && !(replacement.play_mode === 'auto' && replacement.automation_status === 'pending')) throw new RuleError('已在其他页面开启新航程，请刷新后重试');
+              }
+              // An unactivated save cannot schedule provider work after a failed/crashed creation.
+              await store.save(game);
+              old.replacement_game_id = id;
+              if (old.play_mode === 'auto') { old.automation_status = 'stopped'; old.thinking = []; }
+              old.version++;
+            });
+            if (previous.play_mode === 'auto') runner.cancel(previous.id);
+          } else await store.save(game);
+          if (game.play_mode === 'auto') {
+            const activated = await store.transact(id, current => { current.automation_status = 'running'; current.version++; });
+            Object.assign(game, activated);
+          }
+        });
         json(response, 201, getHumanView(game, now), { 'Set-Cookie': `island_session=${id}.${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000` });
         runner.kick(id);
         return;
@@ -94,7 +118,7 @@ export function createApp({ config = loadConfig(), decision, randomInt, now = Da
         runner.kick(game.id);
         return;
       }
-      const staticFiles = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/island-scene.js': ['island-scene.js', 'text/javascript'], '/phase-notice.js': ['phase-notice.js', 'text/javascript'], '/roster.js': ['roster.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
+      const staticFiles = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/island-scene.js': ['island-scene.js', 'text/javascript'], '/phase-notice.js': ['phase-notice.js', 'text/javascript'], '/roster.js': ['roster.js', 'text/javascript'], '/play-mode.js': ['play-mode.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
       if (request.method === 'GET' && staticFiles[url.pathname]) {
         const [file, type] = staticFiles[url.pathname];
         const content = await readFile(join(root, 'public', file));

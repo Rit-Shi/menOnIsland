@@ -151,3 +151,15 @@ test('cancelled auto games discard late decisions and stopped saves are not resu
   await f.runner.resume(); await f.runner.idle();
   assert.equal(started, false);
 });
+
+test('an unactivated staged auto game does not make provider requests on startup', async t => {
+  let calls = 0;
+  const f = await fixture(t, async (_cfg, view, kind) => {
+    calls++;
+    return { action: kind === 'speech' ? { type: 'speech', message: '不应开始' } : { type: 'private_pass' }, fallback: false };
+  });
+  await f.store.transact(f.game.id, game => { game.automation_status = 'pending'; });
+  await f.runner.resume(); await f.runner.idle();
+  assert.equal(calls, 0);
+  assert.equal((await f.store.load(f.game.id)).phase, 'NEGOTIATION');
+});

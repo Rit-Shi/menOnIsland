@@ -3,7 +3,7 @@ import { drawNPCs, getNPCProfile } from './personas.js';
 
 export const IDS = ['P0', 'P1', 'P2', 'P3'];
 export const agentIds = game => game.play_mode === 'auto' ? [...IDS] : IDS.slice(1);
-export const isAutoRunning = game => game.play_mode === 'auto' && game.automation_status !== 'stopped';
+export const isAutoRunning = game => game.play_mode === 'auto' && (game.automation_status == null || game.automation_status === 'running');
 export const PRIVATE_CHAT_DURATION_MS = 30000;
 export const PRIVATE_CHAT_MESSAGE_LIMIT = 5;
 export const REFLECTION_FIELD_LIMIT = 600;

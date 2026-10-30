@@ -14,6 +14,7 @@ Choose manual play or select an NPC to replace P0. User explicitly chose persona
 - Human view follows the P0 seat, including only that seat's private conversations, investments and team settlements. No omniscient view or access to any Agent's private reflection text. All four Agent request observations omit human/controller/UI metadata; auto P0 uses its actual NPC name/persona.
 - Auto UI is read-only gameplay: no chat sending, task choice, vote, investment, registration confirmation or next-day buttons. Show automatic progress and the proxy identity/model; allow new-game setup and viewing existing authorized history.
 - Creating a new game stops a prior authenticated auto game and cancels/discards its in-flight work, after the new game validates/saves successfully. The old save remains recoverable, marked stopped; no new provider calls for abandoned games. No pause/resume UI in this feature.
+- Concurrent replacements of the same authenticated session are serialized. Only one activates a successor; a stale competing creation is rejected. Auto saves are staged as pending before activation and pending saves never schedule requests or resume on startup. An interrupted pending successor can be superseded by a later valid creation using the predecessor session.
 - Refresh/restart resumes an active auto game at its saved stage without resetting private timers, quotas, rosters, actions or reflections. Manual and older saves keep existing behavior. Startup skips stopped auto games.
 
 ## Implementation boundaries
