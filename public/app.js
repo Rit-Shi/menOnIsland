@@ -1,17 +1,19 @@
 import { stageInfo, islandMarkup, updateIslandScene } from './island-scene.js';
 import { noticeEvents, createPhaseNotices } from './phase-notice.js';
+import { rosterNames, personaLabel } from './roster.js';
 
 const $ = selector => document.querySelector(selector);
 const root = $('#app');
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = gold => String(gold);
 const signed = gold => `${gold > 0 ? '+' : ''}${money(gold)}`;
-const names = { P0: '玩家', P1: '林舟', P2: '沈默', P3: '顾寒', SYSTEM: '岛屿广播' };
+let names = rosterNames(null);
 const colors = { P0: '#bd8739', P1: '#3f876a', P2: '#557faa', P3: '#ac745e' };
 const labels = { NEGOTIATION: '公共协商', PRIVATE_CHAT_READY: '准备私聊', PRIVATE_CHAT: '私聊协商', REGISTRATION: '任务报名', VOTE_SPEECH: '淘汰前发言', VOTE_SUBMISSION: '秘密投票', INVESTMENT_SUBMISSION: '秘密投入', ROUND_UPDATE: '本日结算', FINISHED: '最终排名' };
 const taskNames = { A: '收集淡水', B: '搭建庇护所', C: '修复通讯塔' };
 const statusNames = { registered: '已报名', confirmed: '正式队员', insufficient_members: '人数不足', eliminated: '已被淘汰' };
 let game = null;
+let gameGeneration = 0;
 let config = { models: {}, configured: false };
 let channel = 'public';
 let busy = false;
@@ -64,7 +66,12 @@ function accept(next) {
   if (game && game.id === next.id && next.version < game.version) return;
   if (game && game.id === next.id && next.version === game.version && next.messages.length < game.messages.length) return;
   if (next.server_time != null) serverClockOffset = next.server_time - Date.now();
-  if (!game || game.id !== next.id) phaseNotices.reset();
+  if (!game || game.id !== next.id) {
+    gameGeneration++;
+    phaseNotices.reset();
+    channel = 'public';
+    for (const key of Object.keys(drafts)) delete drafts[key];
+  }
   phaseNotices.enqueue(noticeEvents(game, next));
   if (next.phase === 'PRIVATE_CHAT' && game?.phase !== 'PRIVATE_CHAT' && channel === 'public') channel = 'P1';
   const changed = !game || game.id !== next.id || game.version !== next.version || game.messages.length !== next.messages.length;
@@ -76,7 +83,7 @@ async function action(value) {
   busy = true;
   render();
   try {
-    const next = await api('/api/action', { action: value, expected_day: game.current_day, request_id: crypto.randomUUID() });
+    const next = await api('/api/action', { action: value, expected_game_id: game.id, expected_day: game.current_day, request_id: crypto.randomUUID() });
     accept(next);
     if (value.type === 'speech') drafts[`speech-${game.current_day}`] = '';
     if (value.type === 'private_message') drafts[`private-${value.to}`] = '';
@@ -86,7 +93,7 @@ async function action(value) {
 async function newGame() {
   if (busy || (game && !window.confirm('开始新一局？当前页面将切换到新的游戏。'))) return;
   busy = true; render();
-  try { game = await api('/api/games', {}); phaseNotices.reset(); channel = 'public'; }
+  try { accept(await api('/api/games', {})); }
   catch (error) { toast(error.message); }
   finally { busy = false; render(); }
 }
@@ -129,7 +136,7 @@ function roleCards() {
   return players.map(p => {
     const change = latest ? p.gold - (game.round_results.length > 1 ? game.round_results.at(-2).public_gold_balances[p.id] : 10) : 0;
     const current = game?.current_speaker === p.id;
-    return `<article class="role-card ${current ? 'speaking' : ''}" style="--role-color:${colors[p.id]}"><div class="role-top">${avatar(p.id)}<div class="role-info"><h3>${p.id === 'P0' ? '你' : esc(p.name)}<span>${p.id === 'P0' ? 'HUMAN' : p.id}</span></h3><p>${p.id === 'P0' ? '每一次选择，都有代价' : esc(config.models[p.id] || '')}</p></div>${current ? '<span class="speaking-tag">发言中</span>' : ''}</div><div class="role-bottom"><div><span class="coin-mark">◈</span><strong>${money(p.gold)}</strong><small>金币</small></div><span class="${change >= 0 ? 'positive' : 'negative'}">${latest ? signed(change) : p.id === 'P0' ? '你的资产' : ['','合作型','计算型','机会主义型'][Number(p.id[1])]}</span></div></article>`;
+    return `<article class="role-card ${current ? 'speaking' : ''}" style="--role-color:${colors[p.id]}"><div class="role-top">${avatar(p.id)}<div class="role-info"><h3>${p.id === 'P0' ? '你' : esc(p.name)}<span>${p.id === 'P0' ? 'HUMAN' : p.id}</span></h3><p>${p.id === 'P0' ? '每一次选择，都有代价' : esc(config.models[p.id] || '')}</p></div>${current ? '<span class="speaking-tag">发言中</span>' : ''}</div><div class="role-bottom"><div><span class="coin-mark">◈</span><strong>${money(p.gold)}</strong><small>金币</small></div><span class="${change >= 0 ? 'positive' : 'negative'}">${latest ? signed(change) : p.id === 'P0' ? '你的资产' : game ? esc(personaLabel(p)) : '待抽选'}</span></div></article>`;
   }).join('');
 }
 function taskCards() {
@@ -150,7 +157,7 @@ function reflectionProgress() {
   return `<section class="reflection-progress" aria-label="Agent日终反思进度"><div class="reflection-heading"><h3>${icon('compass',16)}${status.complete ? '日终反思已处理完成' : 'Agent日终反思'}</h3><span>${completed} / 3</span></div><div class="reflection-rows">${['P1','P2','P3'].map(id => `<div class="reflection-row ${status.agents[id]}">${avatar(id,true)}<b>${names[id]}</b><span>${status.agents[id] === 'pending' ? '<i class="pulse-ring"></i>反思中' : status.agents[id] === 'fallback' ? '未生成 · 已记录兜底' : '✓ 已保存反思'}</span></div>`).join('')}</div><p>${caption}<small>${icon('lock',11)}反思内容仅进入各Agent自己的记忆，用于后续决策。</small></p></section>`;
 }
 function phaseAction() {
-  if (!game) return `<section class="action-panel welcome"><div><span class="eyebrow">YOUR STORY STARTS HERE</span><h2>八日之间，信任有价。</h2><p>与三位独立思考的 AI 幸存者谈判、组队，争夺最后的财富。</p></div><button class="primary" data-action="new" ${busy ? 'disabled' : ''}>${busy ? '正在抵达…' : '开始一场博弈'} ${icon('arrow', 18)}</button></section>`;
+  if (!game) return `<section class="action-panel welcome"><div><span class="eyebrow">YOUR STORY STARTS HERE</span><h2>八日之间，信任有价。</h2><p>每局从十位幸存者中随机抽选三位，与你谈判、组队，争夺最后的财富。</p></div><button class="primary" data-action="new" ${busy ? 'disabled' : ''}>${busy ? '正在抵达…' : '开始一场博弈'} ${icon('arrow', 18)}</button></section>`;
   const phase = game.phase;
   const reflecting = game.reflection_status && !game.reflection_status.complete;
   const me = game.players[0];
@@ -229,6 +236,7 @@ function results() {
   return `${finished ? `<section class="ranking-card"><div class="section-heading"><h2>${icon('flag', 20)}最终排名</h2><span class="eyebrow">AFTER EIGHT DAYS</span></div><div class="statistics"><span>任务成功 <b>${game.players[0].statistics.success}</b> 次</span><span>任务失败 <b>${game.players[0].statistics.failure}</b> 次</span><span>投票淘汰 <b>${game.players[0].statistics.eliminated}</b> 次</span></div>${game.ranking.map(p => `<div class="ranking-row ${p.is_winner ? 'winner' : ''}"><span class="rank-number">${String(p.rank).padStart(2,'0')}</span>${avatar(p.id, true)}<span class="rank-name">${p.id === 'P0' ? '你' : p.name}${p.is_winner ? '<small>唯一胜利者</small>' : p.rank === 1 ? '<small>并列 · 未获胜</small>' : ''}</span><strong>${money(p.gold)}<small>金币</small></strong></div>`).join('')}</section>` : ''}<section class="settlement-card"><div class="section-heading"><h2>你的第 ${latest.day} 天</h2><span class="subtle">${icon('lock', 13)}队内明细</span></div>${settlement(latest)}${game.diagnostics.length ? `<div class="fallback-notice">${game.diagnostics.map(diagnosticNotice).join(' ')}</div>` : ''}</section>${chart()}${game.round_results.length > 1 ? `<section class="history-card"><div class="section-heading"><h2>你的历史记录</h2><span class="subtle">仅展示你有权限查看的内容</span></div>${game.round_results.slice(0,-1).reverse().map(r => `<details><summary><span>第 ${r.day} 天 · ${taskNames[r.registrations.P0]}</span><span class="${r.my_net_change >= 0 ? 'positive' : 'negative'}">${signed(r.my_net_change)}</span></summary>${settlement(r)}</details>`).join('')}</section>` : ''}${game.vote_results.length ? `<section class="history-card"><div class="section-heading"><h2>公开投票记录</h2></div>${game.vote_results.map(v => `<details><summary><span>第 ${v.day} 天 · ${v.task_id} · 第 ${v.vote_round} 轮</span><span>${names[v.eliminated_id]}出局</span></summary><p class="subtle">${Object.entries(v.votes).map(([from,to]) => `${names[from]} → ${names[to]}`).join('；')}${v.tied_ids.length ? '。最高票平票，随机淘汰。' : ''}</p></details>`).join('')}</section>` : ''}`;
 }
 function render() {
+  names = rosterNames(game);
   const previousScene = $('#island-scene');
   const active = document.activeElement;
   const activeKey = root.contains(active) ? focusKey(active) : '';
@@ -327,7 +335,8 @@ $('#rules-dialog').addEventListener('click', event => { if (event.target === $('
 async function poll() {
   if (polling || document.hidden) return;
   polling = true;
-  try { accept(await api('/api/state')); }
+  const generation = gameGeneration;
+  try { const next = await api('/api/state'); if (generation === gameGeneration) accept(next); }
   catch (error) { if (error.status === 401 && !game) render(); }
   finally { polling = false; }
 }

@@ -6,6 +6,49 @@ import { getObservation } from '../src/observation.js';
 import { requestDecision, parseDecision } from '../src/agents.js';
 import { loadConfig } from '../src/config.js';
 
+test('private requests use saved character identity and current seat-name routing with seat-bound models', async t => {
+  let output = { to: 'P2', message: '与本局的楚衍协商。' };
+  let request;
+  const gateway = createServer(async (req, res) => {
+    let body = ''; for await (const chunk of req) body += chunk;
+    request = JSON.parse(body);
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }));
+  });
+  await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => gateway.close(resolve)));
+  const game = createGame({ id: 'reseated-private', randomInt: () => 0 });
+  Object.assign(game.players[1], { name: '苏燃', npc_id: 'NPC-04', code_name: '复仇者', personality: '重视承诺、记住亲历的违约，发言直率。' });
+  Object.assign(game.players[2], { name: '楚衍', npc_id: 'NPC-10', code_name: '适应性变色龙', personality: '结合排名调整策略，前期合作，后期灵活。' });
+  Object.assign(game.players[3], { name: '阿木', npc_id: 'NPC-05', code_name: '天真理想主义者', personality: '愿意信任和承担公平份额。' });
+  for (const id of game.negotiation_order) applyAction(game, id, { type: 'speech', message: '共同讨论。' });
+  applyAction(game, 'P0', { type: 'start_private_chat' });
+  const cfg = { baseUrl: `http://127.0.0.1:${gateway.address().port}/v1`, apiKey: 'offline-only', models: { P1: 'model-one', P2: 'model-two', P3: 'model-three' }, timeoutMs: 1000 };
+  for (const [seat, name, model] of [['P1', '苏燃', 'model-one'], ['P2', '楚衍', 'model-two'], ['P3', '阿木', 'model-three']]) {
+    output = { to: 'P0', message: '商量今天的策略。' };
+    const result = await requestDecision(cfg, getObservation(game, seat), 'private_chat');
+    assert.equal(result.fallback, false);
+    assert.equal(request.model, model);
+    assert.ok(request.messages[0].content.includes(`你是${name}`));
+    assert.ok(request.messages[0].content.includes(game.players.find(p => p.id === seat).personality));
+    assert.doesNotMatch(JSON.stringify(request.messages), /人类|is_human|\bHuman\b/);
+  }
+  for (const recipient of ['P2', '楚衍']) {
+    output = { to: recipient, message: `只发给楚衍：${recipient}` };
+    const result = await requestDecision(cfg, getObservation(game, 'P1'), 'private_chat');
+    assert.equal(result.fallback, false);
+    assert.equal(result.action.to, 'P2');
+    assert.match(request.messages[0].content, /P2（楚衍）/);
+    assert.doesNotMatch(request.messages[0].content, /P2（沈默）/);
+    applyAction(game, 'P1', result.action);
+    assert.ok(getObservation(game, 'P2').messages.some(m => m.to === 'P2' && m.text === output.message));
+    assert.ok(!getObservation(game, 'P3').messages.some(m => m.text === output.message));
+  }
+  output = { to: '林舟', message: '本局不存在的角色。' };
+  const rejected = await requestDecision(cfg, getObservation(game, 'P1'), 'private_chat');
+  assert.equal(rejected.fallback, true);
+  assert.equal(rejected.code, 'invalid_action');
+});
+
 test('reflection JSON is corrected, bound to the current day and passed back without forging its source',async t=>{
   let attempts=0;let invalid=false;const requests=[];
   const gateway=createServer(async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;requests.push(JSON.parse(body));

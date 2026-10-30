@@ -3,6 +3,7 @@ import { IDS, TASKS, currentSpeaker, privateMessagesSent, PRIVATE_CHAT_MESSAGE_L
 export function getObservation(game, viewerId, now = Date.now) {
   if (!IDS.includes(viewerId)) throw new Error('未知观察者');
   const agentView = viewerId !== 'P0';
+  const self = game.players.find(p => p.id === viewerId);
   const registrationSecret = game.phase === 'REGISTRATION';
   const nameFor = p => agentView && p.id === 'P0' ? 'P0' : p.name;
   const messageFor = message => agentView && message.from === 'SYSTEM'
@@ -23,7 +24,8 @@ export function getObservation(game, viewerId, now = Date.now) {
     id: game.id, schema_version: game.schema_version, version: game.version, current_day: game.current_day, max_days: game.max_days, phase: game.phase,
     ...(!agentView ? { phase_events: (game.phase_events || []).map(event => Object.fromEntries(['id','day','from','to','task_id','vote_round','next_vote_round'].filter(key => Object.hasOwn(event,key)).map(key => [key,event[key]]))) } : {}),
     viewer_id: viewerId,
-    players: game.players.map(p => ({ id: p.id, name: nameFor(p), ...(!agentView ? { is_human: p.is_human } : {}), gold: p.gold, ...(p.id === viewerId ? { statistics: p.statistics } : {}) })),
+    players: game.players.map(p => ({ id: p.id, name: nameFor(p), ...(!agentView ? { is_human: p.is_human, ...(p.code_name ? { code_name: p.code_name } : {}) } : {}), gold: p.gold, ...(p.id === viewerId ? { statistics: p.statistics } : {}) })),
+    ...(agentView ? { self_persona: Object.fromEntries(['npc_id', 'name', 'code_name', 'personality'].filter(key => self[key] != null).map(key => [key, self[key]])) } : {}),
     tasks: TASKS,
     registrations: registrationSecret ? Object.fromEntries(Object.entries(game.registrations).filter(([id]) => id === viewerId)) : game.registrations,
     registration_submitted: Object.fromEntries(IDS.map(id => [id, Object.hasOwn(game.registrations, id)])),

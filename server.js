@@ -74,6 +74,7 @@ export function createApp({ config = loadConfig(), decision, randomInt, now = Da
         const body = await readBody(request);
         if (body.actor_id && body.actor_id !== 'P0') throw new RuleError('只能操作人类玩家', 403);
         const game = await store.transact(session.id, game => {
+          if (body.expected_game_id != null && body.expected_game_id !== game.id) throw new RuleError('当前对局已切换，请刷新页面后重试');
           if (body.expected_day != null && body.expected_day !== game.current_day) throw new RuleError('页面状态已过期，请重试');
           if (body.request_id && game.accepted_requests?.includes(body.request_id)) return game;
           if (body.action?.type === 'lock_registration' && game.thinking?.length) throw new RuleError('请等待 Agent 完成报名');
@@ -85,7 +86,7 @@ export function createApp({ config = loadConfig(), decision, randomInt, now = Da
         runner.kick(game.id);
         return;
       }
-      const staticFiles = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/island-scene.js': ['island-scene.js', 'text/javascript'], '/phase-notice.js': ['phase-notice.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
+      const staticFiles = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/island-scene.js': ['island-scene.js', 'text/javascript'], '/phase-notice.js': ['phase-notice.js', 'text/javascript'], '/roster.js': ['roster.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
       if (request.method === 'GET' && staticFiles[url.pathname]) {
         const [file, type] = staticFiles[url.pathname];
         const content = await readFile(join(root, 'public', file));

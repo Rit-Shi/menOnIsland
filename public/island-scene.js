@@ -1,5 +1,5 @@
 const IDS = ['P0', 'P1', 'P2', 'P3'];
-const NAMES = { P0: '你', P1: '林舟', P2: '沈默', P3: '顾寒' };
+const NAMES = { P0: '你', P1: 'P1', P2: 'P2', P3: 'P3' };
 const COLORS = { P0: '#bd8739', P1: '#3f876a', P2: '#557faa', P3: '#ac745e' };
 const SITES = { A: { x: 254, y: 210, label: '淡水源', title: '收集淡水' }, B: { x: 488, y: 166, label: '庇护所', title: '搭建庇护所' }, C: { x: 716, y: 204, label: '通讯塔', title: '修复通讯塔' } };
 const PUBLISHED = new Set(['VOTE_SPEECH', 'VOTE_SUBMISSION', 'INVESTMENT_SUBMISSION', 'ROUND_UPDATE', 'FINISHED']);

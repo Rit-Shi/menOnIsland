@@ -50,6 +50,21 @@ test('session is required and clients cannot impersonate agents', async t => {
   assert.equal((await f.request('/api/action', { action: { type: 'speech', message: '你好' } }, { Origin: 'https://evil.example' })).status, 403);
 });
 
+test('actions from a previous roster are rejected after a shared cookie switches games', async t => {
+  const f = await fixture(t);
+  const old = (await f.request('/api/games', {})).data;
+  const current = (await f.request('/api/games', {})).data;
+  await f.request('/api/action', { action: { type: 'speech', message: '本局开始。' } });
+  await f.waitFor('PRIVATE_CHAT');
+  const stale = await f.request('/api/action', { expected_game_id: old.id, expected_day: 1, action: { type: 'private_message', to: 'P1', message: '给旧阵容的消息。' } });
+  assert.equal(stale.status, 409);
+  assert.match(stale.data.error, /对局/);
+  assert.ok(!(await f.app.store.load(current.id)).messages.some(m => m.text === '给旧阵容的消息。'));
+  const valid = await f.request('/api/action', { expected_game_id: current.id, expected_day: 1, action: { type: 'private_message', to: 'P1', message: '给当前阵容。' } });
+  assert.equal(valid.status, 200);
+  assert.ok((await f.app.store.load(current.id)).messages.some(m => m.to === 'P1' && m.text === '给当前阵容。'));
+});
+
 test('private API stays paused before the player starts and duplicate requests do not extend its timer', async t => {
   let privateCalls=0;
   const f=await fixture(t,async (_config,_view,kind)=>{

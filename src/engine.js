@@ -1,4 +1,5 @@
 import { randomInt as secureRandomInt, randomUUID } from 'node:crypto';
+import { drawNPCs } from './personas.js';
 
 export const IDS = ['P0', 'P1', 'P2', 'P3'];
 export const PRIVATE_CHAT_DURATION_MS = 30000;
@@ -29,12 +30,11 @@ function setPhase(game, phase, detail = {}) {
   game.phase_events = [...(game.phase_events || []), event].slice(-128);
 }
 export function createGame({ id, randomInt = secureRandomInt } = {}) {
-  const names = ['玩家', '林舟', '沈默', '顾寒'];
-  const personalities = ['Human', '温和的合作型，组织公平出资、珍惜信誉，也会在风险过高时选择 A。', '谨慎的计算型，比较收益、成功概率和最终名次，避免独自承担成本。', '机会主义型，在有利时合作，争取较低投入和较高名次，可以提出不兑现的承诺。'];
+  const profiles = [{ name: '玩家', personality: 'Human' }, ...drawNPCs(randomInt)];
   const game = {
     id, schema_version: 2, version: 0, current_day: 1, max_days: 8, phase: 'NEGOTIATION',
     created_at: new Date().toISOString(),
-    players: IDS.map((id, i) => ({ id, name: names[i], is_human: i === 0, gold: 10, personality: personalities[i], statistics: { success: 0, failure: 0, eliminated: 0 } })),
+    players: IDS.map((id, i) => ({ id, ...profiles[i], is_human: i === 0, gold: 10, statistics: { success: 0, failure: 0, eliminated: 0 } })),
     messages: [], promises: [], vote_results: [], round_results: [], ranking: [], phase_events: [],
     memories: Object.fromEntries(IDS.map(id => [id, { facts: [], trust: Object.fromEntries(IDS.filter(other => other !== id).map(other => [other, 0])), reflections: [] }])),
     diagnostics: [], thinking: [],
