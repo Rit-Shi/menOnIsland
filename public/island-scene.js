@@ -1,15 +1,17 @@
+import { autoStageInfo } from './play-mode.js';
 const IDS = ['P0', 'P1', 'P2', 'P3'];
 const NAMES = { P0: '你', P1: 'P1', P2: 'P2', P3: 'P3' };
 const COLORS = { P0: '#bd8739', P1: '#3f876a', P2: '#557faa', P3: '#ac745e' };
 const SITES = { A: { x: 254, y: 210, label: '淡水源', title: '收集淡水' }, B: { x: 488, y: 166, label: '庇护所', title: '搭建庇护所' }, C: { x: 716, y: 204, label: '通讯塔', title: '修复通讯塔' } };
 const PUBLISHED = new Set(['VOTE_SPEECH', 'VOTE_SUBMISSION', 'INVESTMENT_SUBMISSION', 'ROUND_UPDATE', 'FINISHED']);
 const signed = value => `${value > 0 ? '+' : ''}${value}`;
-const nameFor = (game, id) => id === 'P0' ? '你' : game?.players?.find(player => player.id === id)?.name || NAMES[id] || '其他角色';
+const nameFor = (game, id) => id === 'P0' && game?.play_mode !== 'auto' ? '你' : game?.players?.find(player => player.id === id)?.name || NAMES[id] || '其他角色';
 
 export function stageInfo(game) {
   const phase = game?.phase || 'WELCOME';
   const stage = { step: -1, title: '等待登岛', mapLabel: '风平浪静，等待启程', hint: '开始一场八天的海岛博弈，与其他幸存者协商、组队，争取最多金币。', actionLabel: '开始博弈', actionKind: 'start', needsAction: false };
   if (!game) return stage;
+  if (game.play_mode === 'auto') return { ...stage, ...autoStageInfo(game) };
   const ownTeam = Object.keys(game.active_teams || {}).find(task => game.active_teams[task].includes('P0'));
   const candidate = game.vote_session?.candidate_ids?.includes('P0');
   const reflecting = game.reflection_status && !game.reflection_status.complete;
@@ -91,7 +93,7 @@ export function islandModel(game) {
     const peers = location === 'camp' ? [] : IDS.filter(other => registrations[other] === location && !['eliminated', 'insufficient_members'].includes(game?.registration_status?.[other]));
     const x = location === 'camp' ? 350 + index * 76 : SITES[location].x + (peers.indexOf(id) - (peers.length - 1) / 2) * 62;
     const y = location === 'camp' ? 316 : SITES[location].y + 74;
-    return { id, name: id === 'P0' ? '你' : player?.name || NAMES[id], color: COLORS[id], gold: player?.gold ?? 10, x, y, location, status, speaking, delta, winner: winners.includes(id) };
+    return { id, name: nameFor(game, id), color: COLORS[id], gold: player?.gold ?? 10, x, y, location, status, speaking, delta, winner: winners.includes(id) };
   });
   return { id: game?.id || 'preview', day: game?.current_day || 1, phase, published, selectedTask: phase === 'REGISTRATION' ? game.registrations?.P0 || null : null, stage: stageInfo(game), tasks, roles };
 }
