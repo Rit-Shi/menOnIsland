@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { listNPCProfiles } from './personas.js';
 
 export function loadConfig({ env = process.env, envPath = resolve('.env.local') } = {}) {
   const local = {};
@@ -12,6 +13,7 @@ export function loadConfig({ env = process.env, envPath = resolve('.env.local') 
   const values = { ...local, ...env };
   const baseUrl = (values.AI_BASE_URL || '').replace(/\/+$/, '');
   const models = { P1: values.MODEL_P1 || 'deepseek-v4.1-flash', P2: values.MODEL_P2 || 'deepseek-v4-flash', P3: values.MODEL_P3 || 'glm-5.2' };
+  models.P0 = values.MODEL_P0 || models.P1;
   const apiKey = values.AI_API_KEY || '';
   return {
     baseUrl, apiKey, models,
@@ -19,6 +21,6 @@ export function loadConfig({ env = process.env, envPath = resolve('.env.local') 
     disableThinking: values.AI_DISABLE_THINKING !== 'false',
     host: values.HOST || '127.0.0.1', port: Number(values.PORT) || 3000,
     dataDir: resolve(values.DATA_DIR || '.data'),
-    publicConfig: { models, configured: Boolean(baseUrl && apiKey), provider: baseUrl ? new URL(baseUrl).hostname : '未配置网关' },
+    publicConfig: { models, npc_profiles: listNPCProfiles(), configured: Boolean(baseUrl && apiKey), provider: baseUrl ? new URL(baseUrl).hostname : '未配置网关' },
   };
 }

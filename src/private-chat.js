@@ -1,5 +1,5 @@
-import { applyAction, advanceTime, privateMessagesSent, PRIVATE_CHAT_MESSAGE_LIMIT } from './engine.js';
-import { getObservation } from './observation.js';
+import { applyAction, advanceTime, privateMessagesSent, PRIVATE_CHAT_MESSAGE_LIMIT, agentIds, isAutoRunning } from './engine.js';
+import { getAgentObservation as getObservation } from './observation.js';
 import { randomUUID } from 'node:crypto';
 import { addDecisionDiagnostic, writeSubmissionLog } from './model-log.js';
 
@@ -57,7 +57,7 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
       let outcome = 'discarded';
       let errorCode = 'state_changed';
       await store.transact(snapshot.id, game => {
-        if (game.phase !== 'PRIVATE_CHAT' || game.current_day !== snapshot.current_day || now() >= game.private_chat.ends_at) return;
+        if (game.phase !== 'PRIVATE_CHAT' || game.current_day !== snapshot.current_day || now() >= game.private_chat.ends_at || (game.play_mode === 'auto' && !isAutoRunning(game))) return;
         // Only acknowledge the inbox captured for this request; newer input needs another turn.
         game.private_chat.agent_last_seen[actor] = seen;
         try {
@@ -83,7 +83,7 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
   }
   async function sync(game) {
     if (closed) return;
-    if (game.phase !== 'PRIVATE_CHAT') { stop(game.id); return; }
+    if (game.phase !== 'PRIVATE_CHAT' || (game.play_mode === 'auto' && !isAutoRunning(game))) { stop(game.id); return; }
     if (now() >= game.private_chat.ends_at) { await expire(game.id); return; }
     let session = sessions.get(game.id);
     if (session && session.day !== game.current_day) { stop(game.id); session = null; }
@@ -95,7 +95,7 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
       session.timer = setTimeout(() => { expire(game.id).catch(() => {}); }, Math.max(1, game.private_chat.ends_at - now()));
       session.timer.unref?.();
     }
-    for (const actor of ['P1', 'P2', 'P3']) {
+    for (const actor of agentIds(game)) {
       if (session.jobs.has(actor) || privateMessagesSent(game, actor) >= PRIVATE_CHAT_MESSAGE_LIMIT) continue;
       const seen = game.private_chat.agent_last_seen[actor];
       if (seen == null || inboxCount(game, actor) > seen) launch(game, actor, session);
@@ -104,6 +104,7 @@ export function createPrivateChat({ store, config, decision, randomInt, now, onC
   const jobs = () => [...sessions.values()].flatMap(session => [...session.jobs.values()].map(job => job.task));
   return {
     sync,
+    cancel: stop,
     isBusy: () => jobs().length > 0,
     idle: async () => { while (jobs().length) await Promise.all(jobs()); },
     close: () => { closed = true; for (const id of [...sessions.keys()]) stop(id); },

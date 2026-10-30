@@ -1,11 +1,11 @@
-import { IDS, TASKS, currentSpeaker, privateMessagesSent, PRIVATE_CHAT_MESSAGE_LIMIT, rankPlayers } from './engine.js';
+import { IDS, TASKS, currentSpeaker, privateMessagesSent, PRIVATE_CHAT_MESSAGE_LIMIT, rankPlayers, agentIds } from './engine.js';
 
-export function getObservation(game, viewerId, now = Date.now) {
+export function getObservation(game, viewerId, now = Date.now, { agent = viewerId !== 'P0' } = {}) {
   if (!IDS.includes(viewerId)) throw new Error('未知观察者');
-  const agentView = viewerId !== 'P0';
+  const agentView = agent;
   const self = game.players.find(p => p.id === viewerId);
   const registrationSecret = game.phase === 'REGISTRATION';
-  const nameFor = p => agentView && p.id === 'P0' ? 'P0' : p.name;
+  const nameFor = p => agentView && p.id === 'P0' && game.play_mode !== 'auto' ? 'P0' : p.name;
   const messageFor = message => agentView && message.from === 'SYSTEM'
     ? { ...message, text: message.text.replaceAll('人类玩家', 'P0').replaceAll('玩家', 'P0').replaceAll('人类', '角色') }
     : message;
@@ -31,7 +31,7 @@ export function getObservation(game, viewerId, now = Date.now) {
     registration_submitted: Object.fromEntries(IDS.map(id => [id, Object.hasOwn(game.registrations, id)])),
     registration_status: game.registration_status,
     registration_reviews_remaining: 2 - (game.registration_reviews ?? 0),
-    registration_review_pending: IDS.slice(1).some(id => !Object.hasOwn(game.registrations, id) || (game.agent_registration_revision?.[id] ?? 0) < (game.registration_revision ?? 0)),
+    registration_review_pending: agentIds(game).some(id => !Object.hasOwn(game.registrations, id) || (game.agent_registration_revision?.[id] ?? 0) < (game.registration_revision ?? 0)),
     active_teams: game.active_teams,
     negotiation_order: game.negotiation_order, negotiation_turn_index: game.negotiation_turn_index,
     current_speaker: currentSpeaker(game),
@@ -54,14 +54,18 @@ export function getObservation(game, viewerId, now = Date.now) {
   };
   return structuredClone(view);
 }
+export const getAgentObservation = (game, viewerId, now = Date.now) => getObservation(game, viewerId, now, { agent: true });
 export function getHumanView(game, now = Date.now) {
   const view = getObservation(game, 'P0', now);
   view.server_time = now();
+  view.play_mode = game.play_mode || 'manual';
+  view.agent_ids = agentIds(game);
+  if (game.play_mode === 'auto') view.automation_status = game.automation_status || 'running';
   delete view.memories;
   view.reflection_status = game.reflection_round?.day === game.current_day && ['ROUND_UPDATE','FINISHED'].includes(game.phase) ? {
     day: game.current_day,
-    complete: IDS.slice(1).every(id => game.memories[id].reflections?.some(record => record.day === game.current_day)),
-    agents: Object.fromEntries(IDS.slice(1).map(id => {
+    complete: agentIds(game).every(id => game.memories[id].reflections?.some(record => record.day === game.current_day)),
+    agents: Object.fromEntries(agentIds(game).map(id => {
       const record = game.memories[id].reflections?.find(record => record.day === game.current_day);
       return [id, record ? record.source === 'fallback' ? 'fallback' : 'completed' : 'pending'];
     })),

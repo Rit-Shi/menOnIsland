@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { applyAction, reflectionActors } from './engine.js';
-import { getObservation } from './observation.js';
+import { applyAction, reflectionActors, isAutoRunning } from './engine.js';
+import { getAgentObservation as getObservation } from './observation.js';
 import { fallbackAction } from './agents.js';
 import { addDecisionDiagnostic, writeSubmissionLog } from './model-log.js';
 
@@ -30,7 +30,7 @@ export async function runDailyReflections({ snapshot, store, config, decision, s
     let code = 'state_changed';
     let submitted = null;
     await store.transact(snapshot.id, game => {
-      if (signal.aborted || game.current_day !== snapshot.current_day || game.phase !== snapshot.phase || !reflectionActors(game).includes(actor)) return;
+      if (signal.aborted || (game.play_mode === 'auto' && !isAutoRunning(game)) || game.current_day !== snapshot.current_day || game.phase !== snapshot.phase || !reflectionActors(game).includes(actor)) return;
       try {
         if (result.action?.type !== 'reflect') throw new Error('invalid_reflection_action');
         submitted = { ...result.action, source: result.fallback ? 'fallback' : 'model' };

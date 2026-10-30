@@ -1,7 +1,9 @@
 import { randomInt as secureRandomInt, randomUUID } from 'node:crypto';
-import { drawNPCs } from './personas.js';
+import { drawNPCs, getNPCProfile } from './personas.js';
 
 export const IDS = ['P0', 'P1', 'P2', 'P3'];
+export const agentIds = game => game.play_mode === 'auto' ? [...IDS] : IDS.slice(1);
+export const isAutoRunning = game => game.play_mode === 'auto' && game.automation_status !== 'stopped';
 export const PRIVATE_CHAT_DURATION_MS = 30000;
 export const PRIVATE_CHAT_MESSAGE_LIMIT = 5;
 export const REFLECTION_FIELD_LIMIT = 600;
@@ -29,12 +31,15 @@ function setPhase(game, phase, detail = {}) {
   const event = { id: randomUUID(), day: game.current_day, from, to: phase, ...(vote ? { task_id: vote.task_id, vote_round: vote.vote_round } : {}), ...detail };
   game.phase_events = [...(game.phase_events || []), event].slice(-128);
 }
-export function createGame({ id, randomInt = secureRandomInt } = {}) {
-  const profiles = [{ name: '玩家', personality: 'Human' }, ...drawNPCs(randomInt)];
+export function createGame({ id, randomInt = secureRandomInt, mode = 'manual', proxyNpcId } = {}) {
+  if (!['manual', 'auto'].includes(mode)) throw new RuleError('游戏模式必须为manual或auto', 400);
+  const proxy = mode === 'auto' ? getNPCProfile(proxyNpcId) : null;
+  if (mode === 'auto' && !proxy) throw new RuleError('请选择有效的代理人设', 400);
+  const profiles = [proxy || { name: '玩家', personality: 'Human' }, ...drawNPCs(randomInt, { exclude: proxy ? [proxy.npc_id] : [] })];
   const game = {
     id, schema_version: 2, version: 0, current_day: 1, max_days: 8, phase: 'NEGOTIATION',
-    created_at: new Date().toISOString(),
-    players: IDS.map((id, i) => ({ id, ...profiles[i], is_human: i === 0, gold: 10, statistics: { success: 0, failure: 0, eliminated: 0 } })),
+    created_at: new Date().toISOString(), play_mode: mode, ...(mode === 'auto' ? { automation_status: 'running' } : {}),
+    players: IDS.map((id, i) => ({ id, ...profiles[i], is_human: i === 0 && mode === 'manual', gold: 10, statistics: { success: 0, failure: 0, eliminated: 0 } })),
     messages: [], promises: [], vote_results: [], round_results: [], ranking: [], phase_events: [],
     memories: Object.fromEntries(IDS.map(id => [id, { facts: [], trust: Object.fromEntries(IDS.filter(other => other !== id).map(other => [other, 0])), reflections: [] }])),
     diagnostics: [], thinking: [],
@@ -120,20 +125,20 @@ export function ensureDailyReflection(game) {
   if (!['ROUND_UPDATE','FINISHED'].includes(game.phase) || !game.round_results.some(result => result.day === game.current_day)) return false;
   if (game.reflection_round?.day === game.current_day) return false;
   game.reflection_round = { day: game.current_day };
-  for (const id of IDS.slice(1)) game.memories[id].reflections ||= [];
+  for (const id of agentIds(game)) game.memories[id].reflections ||= [];
   game.version++;
   return true;
 }
 export function reflectionActors(game) {
   if (!['ROUND_UPDATE','FINISHED'].includes(game?.phase) || game.reflection_round?.day !== game.current_day) return [];
-  return IDS.slice(1).filter(id => !game.memories[id].reflections?.some(record => record.day === game.current_day));
+  return agentIds(game).filter(id => !game.memories[id].reflections?.some(record => record.day === game.current_day));
 }
 export function applyAction(game, actorId, action, randomInt = secureRandomInt, now = Date.now) {
   requireRule(IDS.includes(actorId), '未知角色');
   requireRule(action && typeof action === 'object', '行动格式错误');
   switch (action.type) {
     case 'reflect': {
-      requireRule(actorId !== 'P0', '只有 Agent 角色可以提交日终反思');
+      requireRule(agentIds(game).includes(actorId), '只有 Agent 角色可以提交日终反思');
       requireRule(['ROUND_UPDATE','FINISHED'].includes(game.phase) && game.reflection_round?.day === game.current_day, '当前阶段尚未结算，不能反思');
       requireRule(action.day === game.current_day, '反思日期必须是当天');
       requireRule(reflectionActors(game).includes(actorId), '今天已完成反思，不能重复提交');
@@ -165,7 +170,7 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt, 
       break;
     }
     case 'private_pass': {
-      requireRule(actorId !== 'P0' && game.phase === 'PRIVATE_CHAT' && now() < game.private_chat.ends_at, '当前阶段不能跳过私聊回复');
+      requireRule(agentIds(game).includes(actorId) && game.phase === 'PRIVATE_CHAT' && now() < game.private_chat.ends_at, '当前阶段不能跳过私聊回复');
       break;
     }
     case 'speech': {
@@ -194,7 +199,7 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt, 
       requireRule(owns(TASKS, action.task_id), '只能选择任务 A、B、C');
       game.registrations[actorId] = action.task_id;
       game.registration_status[actorId] = 'registered';
-      if (actorId !== 'P0') {
+      if (agentIds(game).includes(actorId)) {
         game.agent_registration_revision ??= {};
         game.agent_registration_revision[actorId] = game.registration_revision ?? 0;
       }
@@ -204,7 +209,7 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt, 
       requireRule(actorId === 'P0' && game.phase === 'REGISTRATION', '当前阶段不能重新评估报名');
       requireRule((game.registration_reviews ?? 0) < 2, '今天的重新评估次数已用完');
       requireRule(IDS.every(id => owns(game.registrations, id)), '请先完成全体初次报名');
-      requireRule(!game.thinking?.length && IDS.slice(1).every(id => (game.agent_registration_revision?.[id] ?? 0) === (game.registration_revision ?? 0)), '请等待本次重新评估结束');
+      requireRule(!game.thinking?.length && agentIds(game).every(id => (game.agent_registration_revision?.[id] ?? 0) === (game.registration_revision ?? 0)), '请等待本次重新评估结束');
       game.registration_reviews = (game.registration_reviews ?? 0) + 1;
       game.registration_revision = (game.registration_revision ?? 0) + 1;
       addMessage(game, 'SYSTEM', '玩家邀请三名 Agent 根据此前协商和各自选择重新评估任务。实际报名仍保密，统一确认后公布。');
@@ -214,7 +219,7 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt, 
       requireRule(actorId === 'P0', '只有玩家可以结束报名');
       requireRule(game.phase === 'REGISTRATION', '当前阶段不能锁定报名');
       requireRule(IDS.every(id => owns(game.registrations, id)), '还有角色未完成报名');
-      requireRule(IDS.slice(1).every(id => (game.agent_registration_revision?.[id] ?? 0) === (game.registration_revision ?? 0)), '请等待 Agent 完成本次重新评估');
+      requireRule(agentIds(game).every(id => (game.agent_registration_revision?.[id] ?? 0) === (game.registration_revision ?? 0)), '请等待 Agent 完成本次重新评估');
       for (const task of Object.values(TASKS)) {
         const members = IDS.filter(id => game.registrations[id] === task.id);
         if (task.id === 'A') members.forEach(id => { game.registration_status[id] = 'confirmed'; });
@@ -252,7 +257,7 @@ export function applyAction(game, actorId, action, randomInt = secureRandomInt, 
     case 'next_day': {
       requireRule(actorId === 'P0' && game.phase === 'ROUND_UPDATE', '当前阶段不能进入下一天');
       ensureDailyReflection(game);
-      requireRule(game.reflection_round?.day === game.current_day && reflectionActors(game).length === 0, '请等待三名 Agent 完成日终反思');
+      requireRule(game.reflection_round?.day === game.current_day && reflectionActors(game).length === 0, '请等待所有 Agent 完成日终反思');
       game.current_day++;
       startDay(game, randomInt);
       break;

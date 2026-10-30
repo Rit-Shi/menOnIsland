@@ -11,7 +11,10 @@ const NPCS = [
   { npc_id: 'NPC-10', name: '楚衍', code_name: '适应性变色龙', personality: '适应性强、善于预测，根据当前排名、剩余轮数和队友可观察的历史灵活调整。前期建立可靠形象，中期选择性利用信誉，末期领先时控制风险、落后时评估追赶机会。语言随局势从友善明确转向试探灵活，不固定零投入。' },
 ];
 
-export function drawNPCs(randomInt) {
-  const remaining = [...NPCS];
+export const listNPCProfiles = () => NPCS.map(({ npc_id, name, code_name }) => ({ npc_id, name, code_name }));
+export const getNPCProfile = id => { const profile = NPCS.find(p => p.npc_id === id); return profile ? { ...profile } : null; };
+
+export function drawNPCs(randomInt, { exclude = [] } = {}) {
+  const remaining = NPCS.filter(p => !exclude.includes(p.npc_id));
   return Array.from({ length: 3 }, () => ({ ...remaining.splice(randomInt(remaining.length), 1)[0] }));
 }

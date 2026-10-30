@@ -3,8 +3,43 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createGame, applyAction, addMessage } from '../src/engine.js';
 import { getObservation } from '../src/observation.js';
+import * as views from '../src/observation.js';
 import { requestDecision, parseDecision } from '../src/agents.js';
 import { loadConfig } from '../src/config.js';
+
+test('P0 proxy uses the default seat model and Agent-only identity for every decision kind', async t => {
+  let output, request;
+  const gateway = createServer(async (req, res) => {
+    let body = ''; for await (const chunk of req) body += chunk;
+    request = JSON.parse(body);
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }));
+  });
+  await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => gateway.close(resolve)));
+  const game = createGame({ id: 'proxy-model', mode: 'auto', proxyNpcId: 'NPC-05', randomInt: () => 0 });
+  game.vote_session = { candidate_ids: ['P0', 'P1', 'P2', 'P3'], votes: {} };
+  const cfg = { baseUrl: `http://127.0.0.1:${gateway.address().port}/v1`, apiKey: 'offline-test', models: { P0: 'proxy-default' }, timeoutMs: 1000 };
+  const outputs = { speech: { message: '我会独立争取胜利。' }, private_chat: { pass: true }, register: { task_id: 'A' }, vote: { target_id: 'P1' }, invest: { amount: 0 }, reflect: { summary: '今天已结束。', lesson: '比较相对差距。', next_plan: '调整后续策略。' } };
+  for (const [kind, value] of Object.entries(outputs)) {
+    output = value;
+    if (kind === 'private_chat') {
+      game.phase = 'PRIVATE_CHAT';
+      game.private_chat = { started_at: Date.now(), ends_at: Date.now() + 30000, agent_last_seen: {} };
+    }
+    if (kind === 'reflect') {
+      game.phase = 'ROUND_UPDATE';
+      game.round_results = [{ day: 1, public_gold_balances: { P0: 12, P1: 12, P2: 12, P3: 12 }, registrations: {}, registration_status: {}, settlements: {}, net_changes: { P0: 2 }, vote_results: [] }];
+    }
+    const result = await requestDecision(cfg, views.getAgentObservation(game, 'P0'), kind);
+    assert.equal(result.fallback, false, kind);
+    assert.equal(request.model, 'proxy-default');
+    assert.match(request.messages[0].content, /你是阿木/);
+    assert.doesNotMatch(JSON.stringify(request.messages), /人类|玩家|is_human|\bHuman\b|play_mode|automation_status/);
+    const context = JSON.parse(request.messages[1].content);
+    assert.deepEqual(Object.keys(context.memories), ['P0']);
+    assert.equal(context.phase_events, undefined);
+  }
+});
 
 test('private requests use saved character identity and current seat-name routing with seat-bound models', async t => {
   let output = { to: 'P2', message: '与本局的楚衍协商。' };

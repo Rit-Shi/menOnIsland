@@ -65,6 +65,28 @@ test('actions from a previous roster are rejected after a shared cookie switches
   assert.ok((await f.app.store.load(current.id)).messages.some(m => m.to === 'P1' && m.text === '给当前阵容。'));
 });
 
+test('auto creation validates selected persona, rejects observer actions and stops only its previous auto game', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.request('/api/games', { play_mode: 'invalid' })).status, 400);
+  assert.equal((await f.request('/api/games', { play_mode: 'auto', proxy_npc_id: 'NPC-99' })).status, 400);
+  const created = await f.request('/api/games', { play_mode: 'auto', proxy_npc_id: 'NPC-05' });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.play_mode, 'auto');
+  assert.equal(created.data.players[0].name, '阿木');
+  assert.equal(new Set(created.data.players.map(p => p.name)).size, 4);
+  assert.equal((await f.request('/api/action', { expected_game_id: created.data.id, action: { type: 'speech', message: '不能代替代理发言' } })).status, 403);
+  assert.equal((await f.request('/api/action', { expected_game_id: 'old-game', action: { type: 'speech', message: '旧局' } })).status, 409);
+  assert.equal((await f.request('/api/games', { play_mode: 'auto' })).status, 400);
+  assert.equal((await f.app.store.load(created.data.id)).automation_status, 'running');
+  const untouched = createGame({ id: 'unselected-auto', mode: 'auto', proxyNpcId: 'NPC-04', randomInt: () => 0 });
+  await f.app.store.save(untouched);
+  const manual = await f.request('/api/games', { play_mode: 'manual' });
+  assert.equal(manual.status, 201);
+  assert.equal(manual.data.play_mode, 'manual');
+  assert.equal((await f.app.store.load(created.data.id)).automation_status, 'stopped');
+  assert.equal((await f.app.store.load(untouched.id)).automation_status, 'running');
+});
+
 test('private API stays paused before the player starts and duplicate requests do not extend its timer', async t => {
   let privateCalls=0;
   const f=await fixture(t,async (_config,_view,kind)=>{

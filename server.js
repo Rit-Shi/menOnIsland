@@ -30,14 +30,14 @@ async function readBody(request) {
 export function createApp({ config = loadConfig(), decision, randomInt, now = Date.now } = {}) {
   const store = new GameStore(config.dataDir);
   const runner = createRunner({ store, config, decision, randomInt, now });
-  async function authenticate(request) {
+  async function authenticate(request, { enroll = true } = {}) {
     const cookie = request.headers.cookie?.split(';').map(s => s.trim()).find(s => s.startsWith('island_session='))?.slice(15);
     if (!cookie || !/^[a-f0-9-]{36}\.[a-f0-9]{64}$/.test(cookie)) throw new RuleError('请开始一局新游戏', 401);
     const [id, token] = cookie.split('.');
     const game = await store.load(id);
     const tokenHash = hash(token);
     if (!game?.session_hash || game.session_hash.length !== tokenHash.length || !timingSafeEqual(Buffer.from(game.session_hash), Buffer.from(tokenHash))) throw new RuleError('游戏会话已失效', 401);
-    if (ensureDailyReflection(game)) {
+    if (enroll && ensureDailyReflection(game)) {
       const enrolled = await store.transact(id, current => { ensureDailyReflection(current); return current; });
       runner.kick(id);
       return enrolled;
@@ -53,12 +53,19 @@ export function createApp({ config = loadConfig(), decision, randomInt, now = Da
       }
       if (request.method === 'GET' && url.pathname === '/api/config') return json(response, 200, config.publicConfig);
       if (request.method === 'POST' && url.pathname === '/api/games') {
-        await readBody(request);
+        const options = await readBody(request);
         const id = randomUUID();
         const token = randomBytes(32).toString('hex');
-        const game = createGame({ id, randomInt });
+        const game = createGame({ id, randomInt, mode: options.play_mode ?? 'manual', proxyNpcId: options.proxy_npc_id });
+        let previous;
+        try { previous = await authenticate(request, { enroll: false }); }
+        catch (error) { if (!(error instanceof RuleError) || error.status !== 401) throw error; }
         game.session_hash = hash(token);
         await store.save(game);
+        if (previous?.play_mode === 'auto' && previous.automation_status !== 'stopped') {
+          await store.transact(previous.id, old => { old.automation_status = 'stopped'; old.thinking = []; old.version++; });
+          runner.cancel(previous.id);
+        }
         json(response, 201, getHumanView(game, now), { 'Set-Cookie': `island_session=${id}.${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000` });
         runner.kick(id);
         return;
@@ -75,6 +82,7 @@ export function createApp({ config = loadConfig(), decision, randomInt, now = Da
         if (body.actor_id && body.actor_id !== 'P0') throw new RuleError('只能操作人类玩家', 403);
         const game = await store.transact(session.id, game => {
           if (body.expected_game_id != null && body.expected_game_id !== game.id) throw new RuleError('当前对局已切换，请刷新页面后重试');
+          if (game.play_mode === 'auto') throw new RuleError('自动模式由Agent行动，观战时不能手动提交游戏动作', 403);
           if (body.expected_day != null && body.expected_day !== game.current_day) throw new RuleError('页面状态已过期，请重试');
           if (body.request_id && game.accepted_requests?.includes(body.request_id)) return game;
           if (body.action?.type === 'lock_registration' && game.thinking?.length) throw new RuleError('请等待 Agent 完成报名');
